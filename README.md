@@ -64,3 +64,23 @@ Service synchronously queries rooms, resource nodes and spawn points when needed
 
 Does not own the academic rules that trigger unlocking - Exam Service owns them; World
 Service consumes `ExamPassed` and applies its own mapping, idempotent by attempt.
+
+## Zombie Service
+Owns zombie type definitions, per-type combat and behavior stats (health, speed, attack strength, perception radius), special abilities, the Professor/Tourist zombie categories, and custom zombie variants.
+
+Does not own live/active zombie instances or their in-session behavior - Game Service does; Zombie Service exposes configuration data via query, and Game Service spawns and controls entities using it for the duration of a cycle.
+
+Does not own spawn locations or spawn timing - Game Service does, in coordination with World Service's spawn points; Zombie Service only supplies which zombie types are eligible to be spawned when asked.
+
+Does not own exam encounters triggered by Professor Zombies - Exam Service does; Game Service mediates the encounter and only reads zombie behavior data from Zombie Service beforehand.
+
+## Resource Service
+Owns resource types and quantities (wood, metal scraps, paper, food), which node/player they belong to, validation and application of resource changes, and consumption for barricading, upgrading, crafting and feeding Kiki.
+
+Does not own the physical map or resource node placement - World Service does; Resource Service references nodes by ID and holds no geography of its own.
+
+Does not own gathering action timers or the decision that an action has completed - Game Service does; Game Service raises a completion event once the timer finishes, and Resource Service validates and applies the resulting change idempotently, so reconnects or duplicate events can't award resources twice.
+
+Does not own crafting recipes or the crafting operation itself - Crafting Service does; Crafting Service requests validation/deduction of the required resources from Resource Service when a recipe is executed.
+
+Does not own new resource nodes created by map expansion - World Service decides the expansion; Resource Service consumes `SectionUnlocked` and creates the economy entries for the newly available nodes itself.
