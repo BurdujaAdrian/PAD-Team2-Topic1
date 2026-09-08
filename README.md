@@ -84,3 +84,14 @@ Does not own gathering action timers or the decision that an action has complete
 Does not own crafting recipes or the crafting operation itself - Crafting Service does; Crafting Service requests validation/deduction of the required resources from Resource Service when a recipe is executed.
 
 Does not own new resource nodes created by map expansion - World Service decides the expansion; Resource Service consumes `SectionUnlocked` and creates the economy entries for the newly available nodes itself.
+
+# Technologies and Communication patterns
+
+## Player Service
+### Go Programming language: 
+\+ Great concurrency and synchronization model. Satisfies the requirement of having atomic trading.
+
+\+ Goroutines enable small but frequent updates to the state in an concurrent context. Satisfies updating players Progression via calls from various services.
+
+\+ Has battle tested libraries for working with Sqlite. Satisfies the requirement of having persistent storage for player's information.
+
