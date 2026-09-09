@@ -677,3 +677,47 @@ Does not own exam/level/unlock progress - Exam Service and Player Service own it
 
 \+ Has battle tested libraries for working with Sqlite. Satisfies the requirement of having persistent storage for player's information.
 
+# Contribution rules
+
+## Branch structure
+
+- `main` — production/deployable, protected
+- `develop` — integration branch, protected
+- `feature/*`, `fix/*`, `chore/*` — personal work branches, unprotected, branched from and merged back into `develop`
+
+## Ruleset: `main`
+
+| Setting | Value |
+|---|---|
+| Target branches | `main` (by pattern) |
+| Require a pull request before merging | On — 1 required approval |
+| Dismiss stale approvals on new commits | On |
+| Require approval of the most recent reviewable push | On |
+| Require conversation resolution before merging | On |
+| Require review from teams / Code Owners | Off |
+| Require additional approval for unattributed Copilot PRs | Off |
+| Require status checks to pass | Off — no team-reviewed CI check exists yet |
+| Restrict deletions | On |
+| Block force pushes | On |
+| Bypass list | Empty — no one bypasses these rules |
+
+## Ruleset: `develop`
+
+| Setting | Value |
+|---|---|
+| Target branches | `develop` (by pattern) |
+| Require a pull request before merging | On — 1 required approval |
+| Dismiss stale approvals on new commits | On |
+| Require approval of the most recent reviewable push | On |
+| Require conversation resolution before merging | On |
+| Require review from teams / Code Owners | Off |
+| Require additional approval for unattributed Copilot PRs | Off |
+| Require status checks to pass | Off — no team-reviewed CI check exists yet |
+| Restrict deletions | On |
+| Block force pushes | On |
+| Bypass list | Empty |
+
+## Notes
+
+- Status checks are off on both branches for now — no CI workflow has been added and reviewed by the team yet. Once one exists: enable it on both, and additionally turn on "Require branches to be up to date before merging" on `develop` only (not needed on `main`, since `main` only ever receives PRs from `develop`).
+- `main` should only receive PRs from `develop`. There's no native GitHub setting for this — it currently relies on team discipline until a reviewed check is added for it
