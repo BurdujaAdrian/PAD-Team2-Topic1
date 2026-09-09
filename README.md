@@ -20,6 +20,308 @@ Does not own the item recipes or their acquisition - Crafting service does; Play
 
 Does not own the real-time actions state - Game Service does; Game service tells which stats to update with the corresponding values.
 
+### Endpoints
+ 
+#### Register Player
+ 
+`POST /api/players` Description: Creates a new player account.
+ 
+Request Body:
+ 
+```json
+{
+	"username": "alex_faf",
+	"email": "alex@utm.md",
+	"password": "hunter2"
+}
+```
+ 
+Success Response (201 Created):
+ 
+```json
+{
+	"player_id": "player-uuid-100",
+	"username": "alex_faf"
+}
+```
+ 
+#### Login
+ 
+`POST /api/players/login` Description: Authenticates a player and issues a session token.
+ 
+Request Body:
+ 
+```json
+{
+	"username": "alex_faf",
+	"password": "hunter2"
+}
+```
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"token": "jwt-token-string",
+	"player_id": "player-uuid-100"
+}
+```
+ 
+#### Get Player Profile
+ 
+`GET /api/players/{player_id}` Description: Returns identity, progression and presence for a player.
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"player_id": "player-uuid-100",
+	"username": "alex_faf",
+	"xp": 1200,
+	"level": 5,
+	"online_status": "online"
+}
+```
+ 
+#### Update Player Profile
+ 
+`PATCH /api/players/{player_id}` Description: Updates mutable profile fields.
+ 
+Request Body:
+ 
+```json
+{
+	"username": "alex_new",
+	"avatar": "avatar-uuid-12"
+}
+```
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"player_id": "player-uuid-100",
+	"username": "alex_new",
+	"avatar": "avatar-uuid-12"
+}
+```
+ 
+#### List Friends
+ 
+`GET /api/players/{player_id}/friends` Description: Returns the player's friend list with current presence.
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"player_id": "player-uuid-100",
+	"count": 2,
+	"friends": [
+		{
+			"player_id": "player-uuid-101",
+			"username": "maria_faf",
+			"online_status": "in-session"
+		}
+	]
+}
+```
+ 
+#### Send Friend Request
+ 
+`POST /api/players/{player_id}/friends/requests` Description: Sends a friend request to another player.
+ 
+Request Body:
+ 
+```json
+{
+	"target_player_id": "player-uuid-101"
+}
+```
+ 
+Success Response (201 Created):
+ 
+```json
+{
+	"request_id": "friend-req-uuid-500",
+	"status": "pending"
+}
+```
+ 
+#### Accept Friend Request
+ 
+`POST /api/players/{player_id}/friends/requests/{request_id}/accept` Description: Accepts a pending friend request.
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"request_id": "friend-req-uuid-500",
+	"status": "accepted"
+}
+```
+ 
+#### Remove Friend
+ 
+`DELETE /api/players/{player_id}/friends/{friend_id}` Description: Removes an existing friend relationship.
+ 
+Success Response (204 No Content)
+ 
+#### Update Presence
+ 
+`PATCH /api/players/{player_id}/presence` Description: Updates the player's online status. Called internally on connect/disconnect/session start.
+ 
+Request Body:
+ 
+```json
+{
+	"status": "in-session"
+}
+```
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"player_id": "player-uuid-100",
+	"online_status": "in-session"
+}
+```
+ 
+#### Get Inventory
+ 
+`GET /api/players/{player_id}/inventory` Description: Returns the player's owned consumables and cosmetic items.
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"player_id": "player-uuid-100",
+	"count": 1,
+	"items": [
+		{
+			"item_id": "item-uuid-700",
+			"type": "consumable",
+			"name": "Energy Drink",
+			"quantity": 2
+		}
+	]
+}
+```
+ 
+#### Add Item to Inventory
+ 
+`POST /api/players/{player_id}/inventory/items` Description: Grants an item to the player's inventory. Called by the Crafting Service once an item finishes crafting.
+ 
+Request Body:
+ 
+```json
+{
+	"item_id": "item-uuid-701",
+	"quantity": 1
+}
+```
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"player_id": "player-uuid-100",
+	"item_id": "item-uuid-701",
+	"quantity": 1
+}
+```
+ 
+#### Apply Progression Change
+ 
+`PATCH /api/players/{player_id}/progression` Description: Applies an XP change and recalculates level. Called by the Game, Exam and Crafting Services when they resolve an action that awards progression.
+ 
+Request Body:
+ 
+```json
+{
+	"xp_delta": 150,
+	"reason": "gathering_action_completed"
+}
+```
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"player_id": "player-uuid-100",
+	"xp": 1350,
+	"level": 5,
+	"leveled_up": false
+}
+```
+ 
+#### Propose Trade
+ 
+`POST /api/trades` Description: Creates a trade offer between two players, including across lobbies.
+ 
+Request Body:
+ 
+```json
+{
+	"from_player_id": "player-uuid-100",
+	"to_player_id": "player-uuid-101",
+	"offered_item_ids": ["item-uuid-700"],
+	"requested_item_ids": ["item-uuid-702"]
+}
+```
+ 
+Success Response (201 Created):
+ 
+```json
+{
+	"trade_id": "trade-uuid-900",
+	"status": "pending"
+}
+```
+ 
+#### Accept Trade
+ 
+`POST /api/trades/{trade_id}/accept` Description: Verifies ownership of all offered/requested items and performs the transfer atomically. Returns `409 Conflict` if either party no longer owns the listed items.
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"trade_id": "trade-uuid-900",
+	"status": "completed"
+}
+```
+ 
+#### Decline Trade
+ 
+`POST /api/trades/{trade_id}/decline` Description: Cancels a pending trade offer.
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"trade_id": "trade-uuid-900",
+	"status": "declined"
+}
+```
+ 
+#### Get Trade
+ 
+`GET /api/trades/{trade_id}` Description: Returns the current state of a trade.
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"trade_id": "trade-uuid-900",
+	"from_player_id": "player-uuid-100",
+	"to_player_id": "player-uuid-101",
+	"offered_item_ids": ["item-uuid-700"],
+	"requested_item_ids": ["item-uuid-702"],
+	"status": "completed"
+}
+```
+
 ## Game Service
 
 Owns the active sessions, the day-night cycle, session timers and timed events, the spawning and short-lived behavior of Zombies during a cycle.
@@ -35,6 +337,188 @@ Does not own resource quantities - Resource Service does; Game Service only runs
 Does not own the exam system - Exam Service does; Game Service can request exams.
 
 Does not own the configuration of zombies - Zombie Service does; Game Service can query the Zombie Service for configurations.
+
+### Endpoints
+ 
+#### Create Session
+ 
+`POST /api/sessions` Description: Creates a new session/lobby on a given map.
+ 
+Request Body:
+ 
+```json
+{
+	"host_player_id": "player-uuid-100",
+	"map_id": "world-uuid-100"
+}
+```
+ 
+Success Response (201 Created):
+ 
+```json
+{
+	"session_id": "session-uuid-200",
+	"status": "lobby"
+}
+```
+ 
+#### Join Session
+ 
+`POST /api/sessions/{session_id}/join` Description: Adds a player to an existing lobby.
+ 
+Request Body:
+ 
+```json
+{
+	"player_id": "player-uuid-101"
+}
+```
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"session_id": "session-uuid-200",
+	"player_ids": ["player-uuid-100", "player-uuid-101"]
+}
+```
+ 
+#### Get Session State
+ 
+`GET /api/sessions/{session_id}` Description: Returns the current cycle, timer and participants for a session.
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"session_id": "session-uuid-200",
+	"cycle": "day",
+	"time_remaining_seconds": 240,
+	"player_ids": ["player-uuid-100", "player-uuid-101"],
+	"status": "active"
+}
+```
+ 
+#### Start Timed Action
+ 
+`POST /api/sessions/{session_id}/actions` Description: Starts a timed player action (chop, scavenge, clear room, barricade, repair). Progress is delivered over the session's WebSocket connection.
+ 
+Request Body:
+ 
+```json
+{
+	"player_id": "player-uuid-100",
+	"type": "scavenge",
+	"target_room_id": "room-uuid-204"
+}
+```
+ 
+Success Response (202 Accepted):
+ 
+```json
+{
+	"action_id": "action-uuid-300",
+	"duration_seconds": 300,
+	"status": "in-progress"
+}
+```
+ 
+#### Get Action Status
+ 
+`GET /api/sessions/{session_id}/actions/{action_id}` Description: Polls the status of a timed action.
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"action_id": "action-uuid-300",
+	"status": "in-progress",
+	"remaining_seconds": 180
+}
+```
+ 
+#### Cancel Action
+ 
+`DELETE /api/sessions/{session_id}/actions/{action_id}` Description: Cancels an in-progress action before it completes.
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"action_id": "action-uuid-300",
+	"status": "cancelled"
+}
+```
+ 
+#### List Active Zombies
+ 
+`GET /api/sessions/{session_id}/zombies` Description: Returns zombies currently spawned for this session's cycle. This state is short-lived and owned by the Game Service, unlike zombie type definitions which belong to the Zombie Service.
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"session_id": "session-uuid-200",
+	"count": 1,
+	"zombies": [
+		{
+			"zombie_id": "zombie-uuid-400",
+			"type": "professor",
+			"room_id": "room-uuid-204",
+			"health": 80
+		}
+	]
+}
+```
+ 
+### Live Session Updates
+ 
+`WS /api/sessions/{session_id}/live` Description: Server-pushed events for real-time gameplay progress.
+ 
+Event `action.completed`:
+ 
+```json
+{
+	"action_id": "action-uuid-300",
+	"player_id": "player-uuid-100",
+	"type": "scavenge"
+}
+```
+ 
+Event `zombie.spawned`:
+ 
+```json
+{
+	"zombie_id": "zombie-uuid-400",
+	"type": "tourist",
+	"room_id": "room-uuid-205"
+}
+```
+ 
+Event `zombie.attack`:
+ 
+```json
+{
+	"zombie_id": "zombie-uuid-400",
+	"target_player_id": "player-uuid-100"
+}
+```
+ 
+Event `cycle.changed`:
+ 
+```json
+{
+	"cycle": "night"
+}
+```
+ 
+Event `session.ended`:
+ 
+```json
+{
+	"result": "survived"
+}
+```
 
 ## Exam Service
 
