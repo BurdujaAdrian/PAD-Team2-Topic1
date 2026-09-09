@@ -694,9 +694,6 @@ Does not own exam/level/unlock progress - Exam Service and Player Service own it
 | Dismiss stale approvals on new commits | On |
 | Require approval of the most recent reviewable push | On |
 | Require conversation resolution before merging | On |
-| Require review from teams / Code Owners | Off |
-| Require additional approval for unattributed Copilot PRs | Off |
-| Require status checks to pass | Off — no team-reviewed CI check exists yet |
 | Restrict deletions | On |
 | Block force pushes | On |
 | Bypass list | Empty — no one bypasses these rules |
@@ -710,14 +707,6 @@ Does not own exam/level/unlock progress - Exam Service and Player Service own it
 | Dismiss stale approvals on new commits | On |
 | Require approval of the most recent reviewable push | On |
 | Require conversation resolution before merging | On |
-| Require review from teams / Code Owners | Off |
-| Require additional approval for unattributed Copilot PRs | Off |
-| Require status checks to pass | Off — no team-reviewed CI check exists yet |
 | Restrict deletions | On |
 | Block force pushes | On |
 | Bypass list | Empty |
-
-## Notes
-
-- Status checks are off on both branches for now — no CI workflow has been added and reviewed by the team yet. Once one exists: enable it on both, and additionally turn on "Require branches to be up to date before merging" on `develop` only (not needed on `main`, since `main` only ever receives PRs from `develop`).
-- `main` should only receive PRs from `develop`. There's no native GitHub setting for this — it currently relies on team discipline until a reviewed check is added for it
