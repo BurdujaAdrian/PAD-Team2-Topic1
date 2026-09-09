@@ -9,6 +9,10 @@ PAD Team 2's Common Public Repository
 | Vornicescu Ion    | Zombie Service, Resource Service    | C#       | PostgreSQL         |
 | Marga Alexandru   | Base Service, Crafting Service      | C#       | PostgreSQL         |
 
+## Diagram
+
+![PAD architecture](docs/images/pad-architecture-v4(1).jpg)
+
 
 # Service Boundaries
 
