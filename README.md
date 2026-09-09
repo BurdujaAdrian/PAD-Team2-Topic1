@@ -9,6 +9,10 @@ PAD Team 2's Common Public Repository
 | Vornicescu Ion    | Zombie Service, Resource Service    | C#       | PostgreSQL         |
 | Marga Alexandru   | Base Service, Crafting Service      | C#       | PostgreSQL         |
 
+## Diagram
+
+![PAD architecture](docs/images/pad-architecture-v4(1).jpg)
+
 
 # Service Boundaries
 
@@ -1168,6 +1172,87 @@ Does not own exam/level/unlock progress - Exam Service and Player Service own it
 \+ Goroutines enable small but frequent updates to the state in an concurrent context. Satisfies updating players Progression via calls from various services.
 
 \+ Has battle tested libraries for working with Sqlite. Satisfies the requirement of having persistent storage for player's information.
+
+\- Does not provide automatic/guaranteed protections against data races. Dissatisfies the CRUD heavy nature of the service.
+
+### Sqlite:
+\+ Zero-config, serverless engine. No separate database process to run or coordinate in the Player Service's Docker image, keeping deployment simple.
+
+\+ Relational model with joins fits Player Service's data shape directly. Player <-> friends <-> inventory <-> trades relationships are very well modeled by SQL.
+
+\+ ACID transactions give the atomic trade requirement a built-in mechanism. Perform the updates in one transaction rather than building atomicity by hand.
+
+\- Single-writer lock: writes serialize regardless of how many goroutines are handling requests concurrently. The progression endpoint gets called frequently by Game, Exam and Crafting Service — under load, those writes queue up despite the app-layer concurrency.
+
+## Game Service
+### Go Programming language:
+\+ Goroutines are cheap enough to run one per active timer/WebSocket connection. They can work with many sessions running several parallel timers each (chop, scavenge, barricade...).
+
+\+ Non-blocking I/O via goroutines lets a delegate calls to World, Resource, Base, Exam and Zombie Service concurrently.
+
+\+ Low memory overhead per goroutine means many concurrent sessions/timers can run at the same time. 
+
+\- Concurrency primitives are low-level (goroutines + channels/mutexes). Game Service has the most shared mutable state (session, cycle, active zombies) of any service in the project.
+
+\- Goroutines/timers tied to a session must be explicitly cancelled (`context.Context`) on disconnect or session end. Risks leaking goroutines.
+
+### Sqlite:
+\+ ACID transactions matter for anything Game Service needs to persist across restarts. Enables recovering in-progress session/timer state after a crash, or writing a finished session's outcome to history.
+
+\+ Zero-config, serverless. Same deployment as the rest of the stack.
+
+\- Single-writer lock. If the workload becomes too big this can become a bottleneck.
+
+\- Most of what Game Service holds (active session/timer state) is short-lived. Only the state that truly needs to persist even after shutdowns of the system need to be stored(session history, lobbies, results, etc. ).
+
+## Exam Service
+ 
+### Go Programming language:
+ 
+\+ Cheap goroutines and `context.WithTimeout` express per-attempt exam timers. Satisfies expiring attempts server-side while many run in parallel.
+ 
+\+ Low per-request overhead and no warm-up. Satisfies keeping the blocking Professor Zombie encounter fast.
+ 
+\+ Same language as Player and Game Services, our main callers. Shared DTOs remove contract drift.
+ 
+\- Verbose error handling. Every idempotency branch becomes an explicit check.
+ 
+\- No mature ORM. All SQL is written by hand.
+ 
+### SQLite:
+ 
+\+ Serializable transactions by default. Satisfies computing the score, closing the attempt and recording achievements atomically.
+ 
+\+ Data is small and bounded: a static question bank plus one semester of attempts. Satisfies the per-service database requirement at zero operational cost.
+ 
+\- Single writer. Concurrent submits serialize, mitigated with WAL mode.
+ 
+\- No horizontal scaling. A later replication requirement would force a migration.
+ 
+## World Service
+ 
+### Go Programming language:
+ 
+\+ Handles high request rates on modest hardware. Satisfies serving map queries on every cycle tick, our heaviest read path.
+ 
+\+ Procedural generation runs in a goroutine while handlers keep serving. Satisfies unlocking a wing without freezing the map.
+ 
+\+ Single static binary, no runtime dependency. Satisfies fast startup during a demo.
+ 
+\- Same verbosity cost as above.
+ 
+\- Nested map responses are tedious to build without record syntax.
+ 
+### SQLite:
+ 
+\+ The map is read-heavy and write-rare, changing only on unlock. The single-writer limit costs us nothing here.
+ 
+\+ WAL mode keeps readers unblocked during a write. Satisfies serving queries while the map expands.
+ 
+\+ Rooms, adjacency, nodes and spawn points insert in one transaction keyed by `trigger_id`. Satisfies idempotent event consumption.
+ 
+\- No graph traversal. Pathfinding, if needed later, lives in application code.
+
 
 # Contribution rules
 

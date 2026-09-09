@@ -10,3 +10,15 @@
 [submodule "services/zombie-service"]
 	path = services/zombie-service
 	url = https://github.com/susanito88/zombie-service.git
+[submodule "services/game-service"]
+	path = services/game-service
+	url = https://github.com/BurdujaAdrian/PAD-Team2-Game-Service.git
+[submodule "services/player-service"]
+	path = services/player-service
+	url = https://github.com/BurdujaAdrian/PAD-Team2-Player-Service.git
+[submodule "services/exam-service"]
+	path = services/exam-service
+	url = https://github.com/Gheorghe2973/exam-service.git
+[submodule "services/world-service"]
+	path = services/world-service
+	url = https://github.com/Gheorghe2973/world-service.git
