@@ -433,6 +433,99 @@ Does not own spawn locations or spawn timing - Game Service does, in coordinatio
 
 Does not own exam encounters triggered by Professor Zombies - Exam Service does; Game Service mediates the encounter and only reads zombie behavior data from Zombie Service beforehand.
 
+### Endpoints
+
+#### List Zombie Types
+
+`GET /api/zombies/types` Description: Returns zombie configurations available to the Game Service. Query parameters `category` and `active` can filter the results.
+
+Success Response (200 OK):
+
+```json
+{
+  "count": 2,
+  "zombie_types": [
+    {
+      "zombie_type_id": "zombie-type-uuid-601",
+      "name": "Professor Zombie",
+      "category": "professor",
+      "health": 120,
+      "speed": 1.2,
+      "attack_strength": 18,
+      "perception_radius": 14,
+      "abilities": ["exam_encounter"],
+      "active": true
+    }
+  ]
+}
+```
+
+#### Get Zombie Type
+
+`GET /api/zombies/types/{zombie_type_id}` Description: Returns the complete configuration for one zombie type, including combat stats and special abilities.
+
+Success Response (200 OK):
+
+```json
+{
+  "zombie_type_id": "zombie-type-uuid-601",
+  "name": "Professor Zombie",
+  "category": "professor",
+  "health": 120,
+  "speed": 1.2,
+  "attack_strength": 18,
+  "perception_radius": 14,
+  "abilities": ["exam_encounter"],
+  "active": true
+}
+```
+
+Error Responses: `404 Not Found` - unknown zombie type.
+
+#### Create a Zombie Type
+
+`POST /api/zombies/types` Description: Creates a custom zombie variant. The type is available for spawning after validation. Payload:
+
+```json
+{
+  "name": "Fast Tourist",
+  "category": "tourist",
+  "health": 80,
+  "speed": 2.1,
+  "attack_strength": 12,
+  "perception_radius": 10,
+  "abilities": ["sprint"]
+}
+```
+
+Success Response (201 Created):
+
+```json
+{
+  "zombie_type_id": "zombie-type-uuid-602",
+  "name": "Fast Tourist",
+  "category": "tourist",
+  "health": 80,
+  "speed": 2.1,
+  "attack_strength": 12,
+  "perception_radius": 10,
+  "abilities": ["sprint"],
+  "active": true
+}
+```
+
+Error Responses: `422 Unprocessable Entity` - invalid stats or unsupported ability.
+
+#### Service Status
+
+`GET /api/status` Description: Health check.
+
+Success Response (200 OK):
+
+```json
+{ "service": "zombie", "status": "ok", "uptime_seconds": 1234 }
+```
+
 ## Resource Service
 
 Owns resource types and quantities (wood, metal scraps, paper, food), which node/player they belong to, validation and application of resource changes, and consumption for barricading, upgrading, crafting and feeding Kiki.
@@ -444,6 +537,116 @@ Does not own gathering action timers or the decision that an action has complete
 Does not own crafting recipes or the crafting operation itself - Crafting Service does; Crafting Service requests validation/deduction of the required resources from Resource Service when a recipe is executed.
 
 Does not own new resource nodes created by map expansion - World Service decides the expansion; Resource Service consumes `SectionUnlocked` and creates the economy entries for the newly available nodes itself.
+
+### Endpoints
+
+#### Get Player Resources
+
+`GET /api/players/{player_id}/resources` Description: Returns the current resource quantities owned by a player.
+
+Success Response (200 OK):
+
+```json
+{
+  "player_id": "player-uuid-123",
+  "resources": [
+    { "resource_type": "wood", "quantity": 24 },
+    { "resource_type": "metal", "quantity": 8 },
+    { "resource_type": "paper", "quantity": 12 },
+    { "resource_type": "food", "quantity": 5 }
+  ]
+}
+```
+
+#### Get Resource Node State
+
+`GET /api/resource-nodes/{node_id}` Description: Returns the current quantity and capacity for a resource node. Placement and regeneration configuration belong to the World Service.
+
+Success Response (200 OK):
+
+```json
+{
+  "node_id": "node-uuid-410",
+  "resource_type": "metal",
+  "quantity": 18,
+  "max_capacity": 50,
+  "available": true
+}
+```
+
+Error Responses: `404 Not Found` - unknown or unavailable resource node.
+
+#### Apply Gathering Result
+
+`POST /api/resource-transactions` Description: Applies the result of a completed gathering action. The Game Service owns the timer; this operation is idempotent by `action_id`. Payload:
+
+```json
+{
+  "action_id": "gather-action-uuid-801",
+  "player_id": "player-uuid-123",
+  "node_id": "node-uuid-410",
+  "resource_type": "metal",
+  "quantity": 3
+}
+```
+
+Success Response (200 OK):
+
+```json
+{
+  "action_id": "gather-action-uuid-801",
+  "applied": true,
+  "player_id": "player-uuid-123",
+  "resource_type": "metal",
+  "quantity_added": 3,
+  "player_quantity": 11,
+  "node_quantity": 15
+}
+```
+
+Error Responses: `409 Conflict` - action already applied or node is depleted. `422 Unprocessable Entity` - resource type or quantity is invalid.
+
+#### Consume Resources
+
+`POST /api/resource-transactions/consume` Description: Validates and deducts resources for crafting, barricading, upgrading or feeding Kiki. The operation is idempotent by `transaction_id`. Payload:
+
+```json
+{
+  "transaction_id": "craft-transaction-uuid-901",
+  "player_id": "player-uuid-123",
+  "reason": "crafting",
+  "items": [
+    { "resource_type": "wood", "quantity": 5 },
+    { "resource_type": "metal", "quantity": 2 }
+  ]
+}
+```
+
+Success Response (200 OK):
+
+```json
+{
+  "transaction_id": "craft-transaction-uuid-901",
+  "consumed": true,
+  "player_id": "player-uuid-123",
+  "remaining": {
+    "wood": 19,
+    "metal": 6
+  }
+}
+```
+
+Error Responses: `409 Conflict` - transaction already applied. `422 Unprocessable Entity` - insufficient resources.
+
+#### Service Status
+
+`GET /api/status` Description: Health check.
+
+Success Response (200 OK):
+
+```json
+{ "service": "resource", "status": "ok", "uptime_seconds": 1234 }
+```
 
 ## Base Service
 
