@@ -6,8 +6,8 @@ PAD Team 2's Common Public Repository
 | ----------------- | ----------------------------------- | -------- | -------- |
 | Burduja Adrian    | Player Service, Game Service        | Go       | SQLite   |
 | Gurschi Gheorghe  | Exam Service, World Service         | Go       | SQLite   |
-| Vornicescu Ion    | Zombie Service, Resource Service    | C#       | PostgreSQL         |
-| Marga Alexandru   | Base Service, Crafting Service      | C#       | PostgreSQL         |
+| Vornicescu Ion    | Base Service, Crafting Service   | C#       | PostgreSQL         |
+| Marga Alexandru   | Zombie Service, Resource Service      | C#       | PostgreSQL         |
 
 ## Diagram
 
