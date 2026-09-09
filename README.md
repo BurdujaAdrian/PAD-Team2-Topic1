@@ -1169,6 +1169,38 @@ Does not own exam/level/unlock progress - Exam Service and Player Service own it
 
 \+ Has battle tested libraries for working with Sqlite. Satisfies the requirement of having persistent storage for player's information.
 
+\- Does not provide automatic/guaranteed protections against data races. Dissatisfies the CRUD heavy nature of the service.
+
+### Sqlite:
+\+ Zero-config, serverless engine. No separate database process to run or coordinate in the Player Service's Docker image, keeping deployment simple.
+
+\+ Relational model with joins fits Player Service's data shape directly. Player <-> friends <-> inventory <-> trades relationships are very well modeled by SQL.
+
+\+ ACID transactions give the atomic trade requirement a built-in mechanism. Perform the updates in one transaction rather than building atomicity by hand.
+
+\- Single-writer lock: writes serialize regardless of how many goroutines are handling requests concurrently. The progression endpoint gets called frequently by Game, Exam and Crafting Service — under load, those writes queue up despite the app-layer concurrency.
+
+## Game Service
+### Go Programming language:
+\+ Goroutines are cheap enough to run one per active timer/WebSocket connection. They can work with many sessions running several parallel timers each (chop, scavenge, barricade...).
+
+\+ Non-blocking I/O via goroutines lets a delegate calls to World, Resource, Base, Exam and Zombie Service concurrently.
+
+\+ Low memory overhead per goroutine means many concurrent sessions/timers can run at the same time. 
+
+\- Concurrency primitives are low-level (goroutines + channels/mutexes). Game Service has the most shared mutable state (session, cycle, active zombies) of any service in the project.
+
+\- Goroutines/timers tied to a session must be explicitly cancelled (`context.Context`) on disconnect or session end. Risks leaking goroutines.
+
+### Sqlite:
+\+ ACID transactions matter for anything Game Service needs to persist across restarts. Enables recovering in-progress session/timer state after a crash, or writing a finished session's outcome to history.
+
+\+ Zero-config, serverless. Same deployment as the rest of the stack.
+
+\- Single-writer lock. If the workload becomes too big this can become a bottleneck.
+
+\- Most of what Game Service holds (active session/timer state) is short-lived. Only the state that truly needs to persist even after shutdowns of the system need to be stored(session history, lobbies, results, etc. ).
+
 # Contribution rules
 
 ## Branch structure
