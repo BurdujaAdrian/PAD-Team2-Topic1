@@ -464,3 +464,13 @@ Does not own resource quantities - Resource Service owns them; Crafting Service 
 Does not own the player's inventory - Player Service owns it; crafted objects are transferred there once the craft succeeds.
 
 Does not own exam/level/unlock progress - Exam Service and Player Service own it; Crafting Service checks against it to determine if a recipe is available to a player.
+# Technologies and Communication patterns
+
+## Player Service
+### Go Programming language: 
+\+ Great concurrency and synchronization model. Satisfies the requirement of having atomic trading.
+
+\+ Goroutines enable small but frequent updates to the state in an concurrent context. Satisfies updating players Progression via calls from various services.
+
+\+ Has battle tested libraries for working with Sqlite. Satisfies the requirement of having persistent storage for player's information.
+
