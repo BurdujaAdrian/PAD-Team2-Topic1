@@ -4,3 +4,9 @@
 [submodule "services/base-service"]
 	path = services/base-service
 	url = https://github.com/jonnyy04/base-service.git
+[submodule "services/resource-service"]
+	path = services/resource-service
+	url = https://github.com/susanito88/resource-service.git
+[submodule "services/zombie-service"]
+	path = services/zombie-service
+	url = https://github.com/susanito88/zombie-service.git
