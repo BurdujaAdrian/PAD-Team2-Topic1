@@ -2,13 +2,13 @@
 
 PAD Team 2's Common Public Repository
 
-| Nume             | Servicii                         | Language | Database |
+| Name             | Services                         | Language | Database |
 | ---------------- | -------------------------------- | -------- | -------- |
 | Burduja Adrian   | Player Service, Game Service     | Go       | SQLite   |
 | Gurschi Gheorghe | Exam Service, World Service      | Go       | SQLite   |
-| Vornicescu Ion   | Zombie Service, Resource Service | C#       | SQLite   |
-| Magla Alexandru  | Base Service, Crafting Service   | C#       | SQLite   |
-
+| Vornicescu Ion   | Base Service, Crafting Service   | C#       | SQLite   |
+| Magla Alexandru  | Zombie Service, Resource Service | C#       | SQLite   |
+Base Service, Crafting Service
 ## Diagram
 
 ![PAD architecture](<docs/images/pad-architecture-v4(1).jpg>)
@@ -1463,47 +1463,6 @@ Success Response (200 OK):
 
 \- No graph traversal. Pathfinding, if needed later, lives in application code.
 
-
-## Communication Patterns
-
-### Synchronous REST over HTTP (JSON)
-
-\+ The caller needs the answer before it can continue. Satisfies the Professor Zombie encounter, where Game Service blocks until Exam Service returns the questions, and the map queries Game Service issues on every cycle tick.
-
-\+ Language-neutral contract. Satisfies the two-language requirement — our Go and C# services share nothing but the JSON payloads defined above.
-
-\+ Request/response maps directly onto ownership boundaries. A service that needs data it does not own asks the owner for it, so there is one source of truth and no local copies to keep in sync.
-
-\- Temporal coupling: the callee must be up at the moment of the call. A World Service restart makes Game Service's room queries fail.
-
-\- The caller must know the callee's address. Adding a consumer means changing the caller.
-
-### Asynchronous event-driven pub/sub
-
-\+ One publisher, several consumers, none of them known to the publisher. Satisfies `section_unlocked`, consumed by both Resource Service (creates the economy entries) and Game Service (invalidates its map cache) — World Service calls neither.
-
-\+ The publisher does not wait for the outcome. Satisfies closing an exam attempt fast: the score is returned to the player immediately, while unlocking a wing and awarding XP happen afterwards.
-
-\+ Events survive a consumer being down. Satisfies not losing an `exam_passed` because World Service happened to be restarting.
-
-\- At-least-once delivery means events can arrive twice. Every consumer must deduplicate, which is why `exam_passed` carries `attempt_id` and `section_unlocked` carries `trigger_id`.
-
-\- Eventual consistency. There is a window in which the exam is passed but the new wing does not exist yet.
-
-\- Harder to debug. A failure surfaces in the consumer's logs, far from the publisher.
-
-### WebSockets
-
-\+ Server-initiated push over a single connection. Satisfies delivering progress for actions that run for minutes (chop for 10, scavenge for 5) without the client polling.
-
-\+ One connection carries every session event. Satisfies `action.completed`, `zombie.spawned`, `zombie.attack` and `cycle.changed` arriving in order on the same channel.
-
-\- Stateful connections. Game Service must cancel the goroutines and timers bound to a session on disconnect, or they leak.
-
-\- Only Game Service needs it. Exam and World Service stay request/response, since nothing they own changes without someone asking.
-
-
-
 ## Base Service
 
 ### C# Programming language:
@@ -1551,6 +1510,90 @@ SQLite:
 \- Single writer: concurrent craft attempts serialize, mitigated with WAL mode. Acceptable since crafting is a short, request/response operation rather than a sustained write workload.
 
 \- No horizontal scaling — fine at lab-project scale, but a later high-concurrency requirement would force a migration to a different engine.
+
+## Zombie Service
+
+### C# Programming language:
+
+\+ Strong static typing and built-in enums map naturally onto zombie categories (Professor/Tourist) and ability sets. Satisfies keeping type/category definitions validated at compile time rather than by runtime string checks.
+
+\+ Records and pattern matching keep read-heavy DTO code (type definitions, stat blocks) compact. Satisfies a service that is mostly CRUD over a fairly static configuration table.
+
+\+ ASP.NET Core's minimal APIs plus EF Core give a fast path from a small, well-defined schema (zombie types) to a working REST surface. Satisfies the service's small footprint — a handful of endpoints over one core entity.
+
+\- Larger runtime/startup footprint than a static Go binary. Not a meaningful cost here since Zombie Service is queried occasionally (not on every cycle tick like World Service), so startup/latency overhead is not on a hot path.
+
+SQLite:
+
+\+ Zero-config, serverless engine. No separate database process to run in the Zombie Service's Docker image, keeping deployment simple and consistent with the rest of the team's services.
+
+\+ The dataset is small and rarely written (zombie type definitions are configured once, then mostly read). The single-writer lock costs us nothing here, since writes only happen when an admin registers/updates a type.
+
+\+ WAL mode keeps reads (Game Service querying eligible types) unblocked while an admin writes a new/updated type. Satisfies Game Service needing low-latency reads even while the roster is being tuned.
+
+\- No native array/JSON column type as rich as some server-based engines; `abilities` has to be stored as a serialized string (e.g. comma-separated or JSON text) and parsed in application code. Acceptable since the ability list per type is small and read-only after creation.
+
+## Resource Service
+
+### C# Programming language:
+
+\+ Database transactions via EF Core map directly onto the idempotency requirement: wrapping "check if `action_id`/`transaction_id` was already processed" + "apply the change" in one transaction is straightforward and readable. Satisfies never awarding resources twice on a duplicated completion event.
+
+\+ Strong typing on quantity fields (using `int`/`decimal` with domain wrapper types) reduces the risk of silent unit/type errors when many other services (Game, Crafting, Base) send quantity payloads into this service.
+
+\+ Same language/runtime as Zombie Service lets us share validation and DTO code between our two services, reducing duplicated boilerplate within the sub-team.
+
+\- Higher per-request overhead than Go under very high concurrency. Acceptable since Resource Service's write volume is bounded by the number of concurrent timed actions across active sessions, not by raw request-per-second traffic.
+
+SQLite:
+
+\+ Serializable transactions by default give the idempotency requirement a built-in mechanism: a unique constraint on `action_id`/`transaction_id` plus a single transaction covering the check-and-apply step, rather than building atomicity by hand.
+
+\+ Zero-config, serverless. Same deployment simplicity as the rest of the stack, with one file per service keeping our databases fully isolated from each other.
+
+\+ WAL mode lets reads (players/other services checking balances) proceed while a gather/consume write is being committed. Satisfies the service's mixed read/write workload without blocking readers on every write.
+
+\- Single-writer lock: concurrent gather-completion and consume calls from different players/nodes serialize regardless of how many requests arrive at once. Under heavy load this could become a bottleneck, since Resource Service is one of the more write-heavy services in the system — mitigated by keeping each transaction short (single row update) so the lock is held only briefly.
+
+\- No horizontal scaling story; a later requirement to scale Resource Service writes across multiple instances would force a migration to a server-based database.
+
+## Communication Patterns
+
+### Synchronous REST over HTTP (JSON)
+
+\+ The caller needs the answer before it can continue. Satisfies the Professor Zombie encounter, where Game Service blocks until Exam Service returns the questions, and the map queries Game Service issues on every cycle tick.
+
+\+ Language-neutral contract. Satisfies the two-language requirement — our Go and C# services share nothing but the JSON payloads defined above.
+
+\+ Request/response maps directly onto ownership boundaries. A service that needs data it does not own asks the owner for it, so there is one source of truth and no local copies to keep in sync.
+
+\- Temporal coupling: the callee must be up at the moment of the call. A World Service restart makes Game Service's room queries fail.
+
+\- The caller must know the callee's address. Adding a consumer means changing the caller.
+
+### Asynchronous event-driven pub/sub
+
+\+ One publisher, several consumers, none of them known to the publisher. Satisfies `section_unlocked`, consumed by both Resource Service (creates the economy entries) and Game Service (invalidates its map cache) — World Service calls neither.
+
+\+ The publisher does not wait for the outcome. Satisfies closing an exam attempt fast: the score is returned to the player immediately, while unlocking a wing and awarding XP happen afterwards.
+
+\+ Events survive a consumer being down. Satisfies not losing an `exam_passed` because World Service happened to be restarting.
+
+\- At-least-once delivery means events can arrive twice. Every consumer must deduplicate, which is why `exam_passed` carries `attempt_id` and `section_unlocked` carries `trigger_id`.
+
+\- Eventual consistency. There is a window in which the exam is passed but the new wing does not exist yet.
+
+\- Harder to debug. A failure surfaces in the consumer's logs, far from the publisher.
+
+### WebSockets
+
+\+ Server-initiated push over a single connection. Satisfies delivering progress for actions that run for minutes (chop for 10, scavenge for 5) without the client polling.
+
+\+ One connection carries every session event. Satisfies `action.completed`, `zombie.spawned`, `zombie.attack` and `cycle.changed` arriving in order on the same channel.
+
+\- Stateful connections. Game Service must cancel the goroutines and timers bound to a session on disconnect, or they leak.
+
+\- Only Game Service needs it. Exam and World Service stay request/response, since nothing they own changes without someone asking.
 
 # Contribution rules
 
