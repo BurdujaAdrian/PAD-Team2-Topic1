@@ -1630,3 +1630,34 @@ SQLite:
 | Restrict deletions                                  | On                       |
 | Block force pushes                                  | On                       |
 | Bypass list                                         | Empty                    |
+
+## Merging strategy
+
+- `feature/*`, `fix/*`, `chore/*` → `develop`: **squash and merge**
+- `develop` → `main`: **merge commit** (no squash), keeps release history
+- Delete the source branch after merge
+
+## Pull request content
+
+Every PR must include:
+
+- **Description** — what changed and why
+- **Related issue** — link/ID if applicable
+- **Type of change** — feature / fix / chore
+- **How it was tested**
+- **Checklist**:
+  - [ ] Tests added/updated and passing
+  - [ ] Self-review done
+  - [ ] Docs updated if needed
+
+## Test coverage
+
+- CI runs the test suite on every PR
+- Minimum coverage: **80%**
+- PRs that drop coverage below the threshold are blocked from merging
+
+## Versioning
+
+- Semantic Versioning (`MAJOR.MINOR.PATCH`)
+- Version bumped and tagged on `main` at release time
+- `develop` stays on the next `-dev` pre-release version between releases
