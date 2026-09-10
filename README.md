@@ -1463,6 +1463,47 @@ Success Response (200 OK):
 
 \- No graph traversal. Pathfinding, if needed later, lives in application code.
 
+
+## Communication Patterns
+
+### Synchronous REST over HTTP (JSON)
+
+\+ The caller needs the answer before it can continue. Satisfies the Professor Zombie encounter, where Game Service blocks until Exam Service returns the questions, and the map queries Game Service issues on every cycle tick.
+
+\+ Language-neutral contract. Satisfies the two-language requirement — our Go and C# services share nothing but the JSON payloads defined above.
+
+\+ Request/response maps directly onto ownership boundaries. A service that needs data it does not own asks the owner for it, so there is one source of truth and no local copies to keep in sync.
+
+\- Temporal coupling: the callee must be up at the moment of the call. A World Service restart makes Game Service's room queries fail.
+
+\- The caller must know the callee's address. Adding a consumer means changing the caller.
+
+### Asynchronous event-driven pub/sub
+
+\+ One publisher, several consumers, none of them known to the publisher. Satisfies `section_unlocked`, consumed by both Resource Service (creates the economy entries) and Game Service (invalidates its map cache) — World Service calls neither.
+
+\+ The publisher does not wait for the outcome. Satisfies closing an exam attempt fast: the score is returned to the player immediately, while unlocking a wing and awarding XP happen afterwards.
+
+\+ Events survive a consumer being down. Satisfies not losing an `exam_passed` because World Service happened to be restarting.
+
+\- At-least-once delivery means events can arrive twice. Every consumer must deduplicate, which is why `exam_passed` carries `attempt_id` and `section_unlocked` carries `trigger_id`.
+
+\- Eventual consistency. There is a window in which the exam is passed but the new wing does not exist yet.
+
+\- Harder to debug. A failure surfaces in the consumer's logs, far from the publisher.
+
+### WebSockets
+
+\+ Server-initiated push over a single connection. Satisfies delivering progress for actions that run for minutes (chop for 10, scavenge for 5) without the client polling.
+
+\+ One connection carries every session event. Satisfies `action.completed`, `zombie.spawned`, `zombie.attack` and `cycle.changed` arriving in order on the same channel.
+
+\- Stateful connections. Game Service must cancel the goroutines and timers bound to a session on disconnect, or they leak.
+
+\- Only Game Service needs it. Exam and World Service stay request/response, since nothing they own changes without someone asking.
+
+
+
 ## Base Service
 
 ### C# Programming language:
@@ -1510,44 +1551,6 @@ SQLite:
 \- Single writer: concurrent craft attempts serialize, mitigated with WAL mode. Acceptable since crafting is a short, request/response operation rather than a sustained write workload.
 
 \- No horizontal scaling — fine at lab-project scale, but a later high-concurrency requirement would force a migration to a different engine.
-
-## Communication Patterns
-
-### Synchronous REST over HTTP (JSON)
-
-\+ The caller needs the answer before it can continue. Satisfies the Professor Zombie encounter, where Game Service blocks until Exam Service returns the questions, and the map queries Game Service issues on every cycle tick.
-
-\+ Language-neutral contract. Satisfies the two-language requirement — our Go and C# services share nothing but the JSON payloads defined above.
-
-\+ Request/response maps directly onto ownership boundaries. A service that needs data it does not own asks the owner for it, so there is one source of truth and no local copies to keep in sync.
-
-\- Temporal coupling: the callee must be up at the moment of the call. A World Service restart makes Game Service's room queries fail.
-
-\- The caller must know the callee's address. Adding a consumer means changing the caller.
-
-### Asynchronous event-driven pub/sub
-
-\+ One publisher, several consumers, none of them known to the publisher. Satisfies `section_unlocked`, consumed by both Resource Service (creates the economy entries) and Game Service (invalidates its map cache) — World Service calls neither.
-
-\+ The publisher does not wait for the outcome. Satisfies closing an exam attempt fast: the score is returned to the player immediately, while unlocking a wing and awarding XP happen afterwards.
-
-\+ Events survive a consumer being down. Satisfies not losing an `exam_passed` because World Service happened to be restarting.
-
-\- At-least-once delivery means events can arrive twice. Every consumer must deduplicate, which is why `exam_passed` carries `attempt_id` and `section_unlocked` carries `trigger_id`.
-
-\- Eventual consistency. There is a window in which the exam is passed but the new wing does not exist yet.
-
-\- Harder to debug. A failure surfaces in the consumer's logs, far from the publisher.
-
-### WebSockets
-
-\+ Server-initiated push over a single connection. Satisfies delivering progress for actions that run for minutes (chop for 10, scavenge for 5) without the client polling.
-
-\+ One connection carries every session event. Satisfies `action.completed`, `zombie.spawned`, `zombie.attack` and `cycle.changed` arriving in order on the same channel.
-
-\- Stateful connections. Game Service must cancel the goroutines and timers bound to a session on disconnect, or they leak.
-
-\- Only Game Service needs it. Exam and World Service stay request/response, since nothing they own changes without someone asking.
 
 # Contribution rules
 
