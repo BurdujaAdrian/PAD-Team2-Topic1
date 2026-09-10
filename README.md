@@ -6,8 +6,8 @@ PAD Team 2's Common Public Repository
 | ---------------- | -------------------------------- | -------- | -------- |
 | Burduja Adrian   | Player Service, Game Service     | Go       | SQLite   |
 | Gurschi Gheorghe | Exam Service, World Service      | Go       | SQLite   |
-| Vornicescu Ion   | Base Service, Crafting Service   | C#       | PostgreSQL   |
-| Magla Alexandru  | Zombie Service, Resource Service | C#       | PostgreSQL   |
+| Vornicescu Ion   | Base Service, Crafting Service   | C#       | SQLite   |
+| Magla Alexandru  | Zombie Service, Resource Service | C#       | SQLite   |
 
 ## Diagram
 
@@ -1465,6 +1465,100 @@ Success Response (200 OK):
 
 ion to a server-based database.
 
+## Base Service
+
+### C# Programming language:
+
+\+ Async/await gives clean, non-blocking I/O for the calls Base Service fans out on every action (Resource Service for validation/deduction, World Service for room eligibility).
+
+\+ Strong static typing catches mismatched state transitions (e.g. applying a barricade upgrade to a room that doesn't exist yet) at compile time rather than at runtime. Satisfies the CRUD-and-validation-heavy nature of the service.
+
+\- Heavier runtime and slower cold start, though not significant for a request-driven service.
+
+\- More verbose dependency setup (DI container, EF Core context registration).
+
+SQLite:
+
+\+ Zero-config, serverless engine — no separate database process to run or coordinate in the Base Service's Docker image, keeping deployment simple and consistent with the rest of the team's services.
+
+\+ ACID transactions across related tables (base, rooms, barricades, facilities) let a single upgrade update several fields as one atomic unit, rather than building atomicity by hand.
+
+\+ Relational model with foreign keys fits the base → rooms → facilities/barricades hierarchy directly, and data volume per player (a handful of rows per base) stays well within what an embedded engine handles comfortably.
+
+\- Single-writer lock: writes serialize regardless of concurrent requests, mitigated with WAL mode.
+
+\- No horizontal scaling. Fine for this project data volume, but a real deployment with many concurrent players would eventually need a different engine.
+
+## Crafting Service
+
+### C# Programming language:
+
+\+ Database transactions via EF Core map cleanly onto the "validate → deduct → grant" sequence the crafting operation must perform atomically. Satisfies the lab's explicit atomicity requirement for crafting.
+
+\+ Strong typing on recipe definitions (inputs, outputs, unlock conditions) reduces the risk of a malformed recipe silently consuming resources without granting an item.
+
+\- Idempotency (via `idempotency_key`) has to be handled explicitly at the application layer — no built-in equivalent to Go's lightweight per-request goroutine isolation, so retried requests need a deliberate dedup check against stored craft records.
+
+\- Slower cold start, though not significant for a synchronous, low-frequency operation like crafting.
+
+SQLite:
+
+\+ ACID transactions by default guarantee the craft operation is genuinely all-or-nothing: if granting the item fails after resources were deducted, the transaction rolls back cleanly instead of leaving the player short on materials with nothing to show for it.
+
+\+ Recipes are read far more often than written (checked on every crafting attempt, changed rarely) and are small, bounded data (a handful of recipes plus craft history) — a good fit for an embedded engine with no operational overhead.
+
+\+ Unique constraint on `idempotency_key` per craft record gives duplicate-request protection almost for free at the schema level, rather than needing custom in-app locking.
+
+\- Single writer: concurrent craft attempts serialize, mitigated with WAL mode. Acceptable since crafting is a short, request/response operation rather than a sustained write workload.
+
+\- No horizontal scaling — fine at lab-project scale, but a later high-concurrency requirement would force a migration to a different engine.
+
+## Zombie Service
+
+### C# Programming language:
+
+\+ Strong static typing and built-in enums map naturally onto zombie categories (Professor/Tourist) and ability sets. Satisfies keeping type/category definitions validated at compile time rather than by runtime string checks.
+
+\+ Records and pattern matching keep read-heavy DTO code (type definitions, stat blocks) compact. Satisfies a service that is mostly CRUD over a fairly static configuration table.
+
+\+ ASP.NET Core's minimal APIs plus EF Core give a fast path from a small, well-defined schema (zombie types) to a working REST surface. Satisfies the service's small footprint — a handful of endpoints over one core entity.
+
+\- Larger runtime/startup footprint than a static Go binary. Not a meaningful cost here since Zombie Service is queried occasionally (not on every cycle tick like World Service), so startup/latency overhead is not on a hot path.
+
+SQLite:
+
+\+ Zero-config, serverless engine. No separate database process to run in the Zombie Service's Docker image, keeping deployment simple and consistent with the rest of the team's services.
+
+\+ The dataset is small and rarely written (zombie type definitions are configured once, then mostly read). The single-writer lock costs us nothing here, since writes only happen when an admin registers/updates a type.
+
+\+ WAL mode keeps reads (Game Service querying eligible types) unblocked while an admin writes a new/updated type. Satisfies Game Service needing low-latency reads even while the roster is being tuned.
+
+\- No native array/JSON column type as rich as some server-based engines; `abilities` has to be stored as a serialized string (e.g. comma-separated or JSON text) and parsed in application code. Acceptable since the ability list per type is small and read-only after creation.
+
+## Resource Service
+
+### C# Programming language:
+
+\+ Database transactions via EF Core map directly onto the idempotency requirement: wrapping "check if `action_id`/`transaction_id` was already processed" + "apply the change" in one transaction is straightforward and readable. Satisfies never awarding resources twice on a duplicated completion event.
+
+\+ Strong typing on quantity fields (using `int`/`decimal` with domain wrapper types) reduces the risk of silent unit/type errors when many other services (Game, Crafting, Base) send quantity payloads into this service.
+
+\+ Same language/runtime as Zombie Service lets us share validation and DTO code between our two services, reducing duplicated boilerplate within the sub-team.
+
+\- Higher per-request overhead than Go under very high concurrency. Acceptable since Resource Service's write volume is bounded by the number of concurrent timed actions across active sessions, not by raw request-per-second traffic.
+
+SQLite:
+
+\+ ACID transactions by default give the idempotency requirement a built-in mechanism: a unique constraint on `action_id`/`transaction_id` plus a single transaction covering the check-and-apply step, rather than building atomicity by hand.
+
+\+ Zero-config, serverless. Same deployment simplicity as the rest of the stack, with one file per service keeping our databases fully isolated from each other.
+
+\+ WAL mode lets reads (players/other services checking balances) proceed while a gather/consume write is being committed. Satisfies the service's mixed read/write workload without blocking readers on every write.
+
+\- Single-writer lock: concurrent gather-completion and consume calls from different players/nodes serialize regardless of how many requests arrive at once. Under heavy load this could become a bottleneck, since Resource Service is one of the more write-heavy services in the system — mitigated by keeping each transaction short (single row update) so the lock is held only briefly.
+
+\- No horizontal scaling story; a later requirement to scale Resource Service writes across multiple instances would force a migrat
+
 ## Communication Patterns
 
 ### Synchronous REST over HTTP (JSON)
@@ -1502,100 +1596,6 @@ ion to a server-based database.
 \- Stateful connections. Game Service must cancel the goroutines and timers bound to a session on disconnect, or they leak.
 
 \- Only Game Service needs it. Exam and World Service stay request/response, since nothing they own changes without someone asking.
-
-## Base Service
-
-### C# Programming language:
-
-\+ Async/await gives clean, non-blocking I/O for the calls Base Service fans out on every action (Resource Service for validation/deduction, World Service for room eligibility).
-
-\+ Strong static typing catches mismatched state transitions (e.g. applying a barricade upgrade to a room that doesn't exist yet) at compile time rather than at runtime. Satisfies the CRUD-and-validation-heavy nature of the service.
-
-\- Heavier runtime and slower cold start, though not significant for a request-driven service.
-
-\- More verbose dependency setup (DI container, EF Core context registration).
-
-PostgreSQL:
-
-\+ Zero-config, serverless engine — no separate database process to run or coordinate in the Base Service's Docker image, keeping deployment simple and consistent with the rest of the team's services.
-
-\+ ACID transactions across related tables (base, rooms, barricades, facilities) let a single upgrade update several fields as one atomic unit, rather than building atomicity by hand.
-
-\+ Relational model with foreign keys fits the base → rooms → facilities/barricades hierarchy directly, and data volume per player (a handful of rows per base) stays well within what an embedded engine handles comfortably.
-
-\- Single-writer lock: writes serialize regardless of concurrent requests.
-
-\- No horizontal scaling. Fine for this project data volume, but a real deployment with many concurrent players would eventually need a different engine.
-
-## Crafting Service
-
-### C# Programming language:
-
-\+ Database transactions via EF Core map cleanly onto the "validate → deduct → grant" sequence the crafting operation must perform atomically. Satisfies the lab's explicit atomicity requirement for crafting.
-
-\+ Strong typing on recipe definitions (inputs, outputs, unlock conditions) reduces the risk of a malformed recipe silently consuming resources without granting an item.
-
-\- Idempotency (via `idempotency_key`) has to be handled explicitly at the application layer — no built-in equivalent to Go's lightweight per-request goroutine isolation, so retried requests need a deliberate dedup check against stored craft records.
-
-\- Slower cold start, though not significant for a synchronous, low-frequency operation like crafting.
-
-PostgreSQL:
-
-\+ Serializable transactions by default guarantee the craft operation is genuinely all-or-nothing: if granting the item fails after resources were deducted, the transaction rolls back cleanly instead of leaving the player short on materials with nothing to show for it.
-
-\+ Recipes are read far more often than written (checked on every crafting attempt, changed rarely) and are small, bounded data (a handful of recipes plus craft history) — a good fit for an embedded engine with no operational overhead.
-
-\+ Unique constraint on `idempotency_key` per craft record gives duplicate-request protection almost for free at the schema level, rather than needing custom in-app locking.
-
-\- Single writer: concurrent craft attempts serialize, mitigated with WAL mode. Acceptable since crafting is a short, request/response operation rather than a sustained write workload.
-
-\- No horizontal scaling — fine at lab-project scale, but a later high-concurrency requirement would force a migration to a different engine.
-
-## Zombie Service
-
-### C# Programming language:
-
-\+ Strong static typing and built-in enums map naturally onto zombie categories (Professor/Tourist) and ability sets. Satisfies keeping type/category definitions validated at compile time rather than by runtime string checks.
-
-\+ Records and pattern matching keep read-heavy DTO code (type definitions, stat blocks) compact. Satisfies a service that is mostly CRUD over a fairly static configuration table.
-
-\+ ASP.NET Core's minimal APIs plus EF Core give a fast path from a small, well-defined schema (zombie types) to a working REST surface. Satisfies the service's small footprint — a handful of endpoints over one core entity.
-
-\- Larger runtime/startup footprint than a static Go binary. Not a meaningful cost here since Zombie Service is queried occasionally (not on every cycle tick like World Service), so startup/latency overhead is not on a hot path.
-
-PostgreSQL:
-
-\+ Zero-config, serverless engine. No separate database process to run in the Zombie Service's Docker image, keeping deployment simple and consistent with the rest of the team's services.
-
-\+ The dataset is small and rarely written (zombie type definitions are configured once, then mostly read). The single-writer lock costs us nothing here, since writes only happen when an admin registers/updates a type.
-
-\+ WAL mode keeps reads (Game Service querying eligible types) unblocked while an admin writes a new/updated type. Satisfies Game Service needing low-latency reads even while the roster is being tuned.
-
-\- No native array/JSON column type as rich as some server-based engines; `abilities` has to be stored as a serialized string (e.g. comma-separated or JSON text) and parsed in application code. Acceptable since the ability list per type is small and read-only after creation.
-
-## Resource Service
-
-### C# Programming language:
-
-\+ Database transactions via EF Core map directly onto the idempotency requirement: wrapping "check if `action_id`/`transaction_id` was already processed" + "apply the change" in one transaction is straightforward and readable. Satisfies never awarding resources twice on a duplicated completion event.
-
-\+ Strong typing on quantity fields (using `int`/`decimal` with domain wrapper types) reduces the risk of silent unit/type errors when many other services (Game, Crafting, Base) send quantity payloads into this service.
-
-\+ Same language/runtime as Zombie Service lets us share validation and DTO code between our two services, reducing duplicated boilerplate within the sub-team.
-
-\- Higher per-request overhead than Go under very high concurrency. Acceptable since Resource Service's write volume is bounded by the number of concurrent timed actions across active sessions, not by raw request-per-second traffic.
-
-PostgreSQL:
-
-\+ Serializable transactions by default give the idempotency requirement a built-in mechanism: a unique constraint on `action_id`/`transaction_id` plus a single transaction covering the check-and-apply step, rather than building atomicity by hand.
-
-\+ Zero-config, serverless. Same deployment simplicity as the rest of the stack, with one file per service keeping our databases fully isolated from each other.
-
-\+ WAL mode lets reads (players/other services checking balances) proceed while a gather/consume write is being committed. Satisfies the service's mixed read/write workload without blocking readers on every write.
-
-\- Single-writer lock: concurrent gather-completion and consume calls from different players/nodes serialize regardless of how many requests arrive at once. Under heavy load this could become a bottleneck, since Resource Service is one of the more write-heavy services in the system — mitigated by keeping each transaction short (single row update) so the lock is held only briefly.
-
-\- No horizontal scaling story; a later requirement to scale Resource Service writes across multiple instances would force a migrat
 
 # Contribution rules
 
