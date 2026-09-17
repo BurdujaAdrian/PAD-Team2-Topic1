@@ -2,6 +2,7 @@
 
 PAD Team 2's Common Public Repository
 
+
 | Name             | Services                         | Language | Database |
 | ---------------- | -------------------------------- | -------- | -------- |
 | Burduja Adrian   | Player Service, Game Service     | Go       | SQLite   |
@@ -11,7 +12,7 @@ PAD Team 2's Common Public Repository
 
 ## Diagram
 
-![PAD architecture](<docs/images/pad-architecture-v4(1).jpg>)
+![PAD architecture](docs/images/diagram.png)
 
 # Service Boundaries
 
@@ -1607,29 +1608,31 @@ SQLite:
 
 ## Ruleset: `main`
 
-| Setting                                             | Value                               |
-| --------------------------------------------------- | ----------------------------------- |
-| Target branches                                     | `main` (by pattern)                 |
+
+| Setting                                             | Value                                |
+| --------------------------------------------------- | ------------------------------------ |
+| Target branches                                     | `main` (by pattern)                  |
 | Require a pull request before merging               | On — 1 required approval            |
-| Dismiss stale approvals on new commits              | On                                  |
-| Require approval of the most recent reviewable push | On                                  |
-| Require conversation resolution before merging      | On                                  |
-| Restrict deletions                                  | On                                  |
-| Block force pushes                                  | On                                  |
+| Dismiss stale approvals on new commits              | On                                   |
+| Require approval of the most recent reviewable push | On                                   |
+| Require conversation resolution before merging      | On                                   |
+| Restrict deletions                                  | On                                   |
+| Block force pushes                                  | On                                   |
 | Bypass list                                         | Empty — no one bypasses these rules |
 
 ## Ruleset: `develop`
 
-| Setting                                             | Value                    |
-| --------------------------------------------------- | ------------------------ |
-| Target branches                                     | `develop` (by pattern)   |
+
+| Setting                                             | Value                     |
+| --------------------------------------------------- | ------------------------- |
+| Target branches                                     | `develop` (by pattern)    |
 | Require a pull request before merging               | On — 1 required approval |
-| Dismiss stale approvals on new commits              | On                       |
-| Require approval of the most recent reviewable push | On                       |
-| Require conversation resolution before merging      | On                       |
-| Restrict deletions                                  | On                       |
-| Block force pushes                                  | On                       |
-| Bypass list                                         | Empty                    |
+| Dismiss stale approvals on new commits              | On                        |
+| Require approval of the most recent reviewable push | On                        |
+| Require conversation resolution before merging      | On                        |
+| Restrict deletions                                  | On                        |
+| Block force pushes                                  | On                        |
+| Bypass list                                         | Empty                     |
 
 ## Merging strategy
 
@@ -1646,9 +1649,9 @@ Every PR must include:
 - **Type of change** — feature / fix / chore
 - **How it was tested**
 - **Checklist**:
-  - [ ] Tests added/updated and passing
-  - [ ] Self-review done
-  - [ ] Docs updated if needed
+  - [ ]  Tests added/updated and passing
+  - [ ]  Self-review done
+  - [ ]  Docs updated if needed
 
 ## Test coverage
 
