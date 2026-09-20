@@ -25,13 +25,13 @@ Does not own the item recipes or their acquisition - Crafting service does; Play
 Does not own the real-time actions state - Game Service does; Game service tells which stats to update with the corresponding values.
 
 ### Endpoints
-
+ 
 #### Register Player
-
+ 
 `POST /api/players` Description: Creates a new player account.
-
+ 
 Request Body:
-
+ 
 ```json
 {
 	"username": "alex_faf",
@@ -39,87 +39,106 @@ Request Body:
 	"password": "hunter2"
 }
 ```
-
+ 
 Success Response (201 Created):
-
+ 
 ```json
 {
 	"player_id": "player-uuid-100",
 	"username": "alex_faf"
 }
 ```
-
+ 
 #### Login
-
-`POST /api/players/login` Description: Authenticates a player and issues a session token.
-
+ 
+`POST /api/players/login` Description: Authenticates a player
+ 
 Request Body:
-
+ 
 ```json
 {
 	"username": "alex_faf",
 	"password": "hunter2"
 }
 ```
-
+ 
 Success Response (200 OK):
-
+ 
 ```json
 {
-	"token": "jwt-token-string",
 	"player_id": "player-uuid-100"
 }
 ```
-
+ 
 #### Get Player Profile
-
+ 
 `GET /api/players/{player_id}` Description: Returns identity, progression and presence for a player.
 
 Success Response (200 OK):
-
+ 
 ```json
 {
 	"player_id": "player-uuid-100",
 	"username": "alex_faf",
 	"xp": 1200,
 	"level": 5,
+	"avatar":"img.png",
 	"online_status": "online"
 }
 ```
-
+ 
 #### Update Player Profile
-
+ 
 `PATCH /api/players/{player_id}` Description: Updates mutable profile fields.
-
+ 
 Request Body:
-
+ 
 ```json
 {
 	"username": "alex_new",
 	"avatar": "avatar-uuid-12"
 }
 ```
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"player_id": "player-uuid-100",
+	"username": "alex_new",
+	"avatar": "avatar-uuid-12"
+}
+```
+
+#### Delete Player Progile
+`DELETE /api/players/{player_id}` Description: Delete the profile of a player
+
+Success Response (204 No Content)
+
+#### Get Friendship Status
+
+`GET /api/players/{player_id}/friends/{other_player_id}` Description: Returns the current relationship state between the two players — friends, a pending request in either direction, or none.
 
 Success Response (200 OK):
 
 ```json
 {
 	"player_id": "player-uuid-100",
-	"username": "alex_new",
-	"avatar": "avatar-uuid-12"
+	"other_player_id": "player-uuid-103",
+	"status": "pending_outgoing",
+	"request_id": "friend-req-uuid-501"
 }
 ```
 
 #### List Friends
-
+ 
 `GET /api/players/{player_id}/friends` Description: Returns the player's friend list with current presence.
-
+ 
 Success Response (200 OK):
-
+ 
 ```json
 {
 	"player_id": "player-uuid-100",
-	"count": 2,
 	"friends": [
 		{
 			"player_id": "player-uuid-101",
@@ -130,73 +149,92 @@ Success Response (200 OK):
 }
 ```
 
-#### Send Friend Request
+#### List Incoming Friend Requests
 
-`POST /api/players/{player_id}/friends/requests` Description: Sends a friend request to another player.
-
-Request Body:
-
-```json
-{
-	"target_player_id": "player-uuid-101"
-}
-```
-
-Success Response (201 Created):
-
-```json
-{
-	"request_id": "friend-req-uuid-500",
-	"status": "pending"
-}
-```
-
-#### Accept Friend Request
-
-`POST /api/players/{player_id}/friends/requests/{request_id}/accept` Description: Accepts a pending friend request.
-
-Success Response (200 OK):
-
-```json
-{
-	"request_id": "friend-req-uuid-500",
-	"status": "accepted"
-}
-```
-
-#### Remove Friend
-
-`DELETE /api/players/{player_id}/friends/{friend_id}` Description: Removes an existing friend relationship.
-
-Success Response (204 No Content)
-
-#### Update Presence
-
-`PATCH /api/players/{player_id}/presence` Description: Updates the player's online status. Called internally on connect/disconnect/session start.
-
-Request Body:
-
-```json
-{
-	"status": "in-session"
-}
-```
+`GET /api/players/{player_id}/friends/requests` Description: Returns pending friend requests sent *to* this player by others. Does not include requests this player has sent out.
 
 Success Response (200 OK):
 
 ```json
 {
 	"player_id": "player-uuid-100",
-	"online_status": "in-session"
+	"items": [
+		{
+			"request_id": "friend-req-uuid-500",
+			"from_player_id": "player-uuid-102",
+			"username": "george_faf",
+			"status": "pending"
+		}
+	]
 }
 ```
 
-#### Get Inventory
+#### Send Friend Request
+ 
+`POST /api/players/{player_id}/friends/requests` Description: Sends a friend request to another player.
 
-`GET /api/players/{player_id}/inventory` Description: Returns the player's owned consumables and cosmetic items.
-
+Request body:
+```json
+{
+	"target_player_id":"friend-uuid-100"
+}
+```
+ 
+Success Response (201 Created):
+ 
+```json
+{
+	"request_id": "friend-req-uuid-500",
+	"status": "pending"
+}
+```
+ 
+#### Accept Friend Request
+ 
+`POST /api/players/{player_id}/friends/requests/{request_id}/accept` Description: Accepts a pending friend request.
+ 
 Success Response (200 OK):
-
+ 
+```json
+{
+	"request_id": "friend-req-uuid-500",
+	"status": "accepted"
+}
+```
+ 
+#### Remove Friend
+ 
+`DELETE /api/players/{player_id}/friends/{friend_id}` Description: Removes an existing friend relationship.
+ 
+Success Response (204 No Content)
+ 
+#### Update Presence
+ 
+`PATCH /api/players/{player_id}/presence` Description: Updates the player's online status. Called internally on connect/disconnect/session start.
+ 
+Request Body:
+ 
+```json
+{
+	"status": "in-session"
+}
+```
+ 
+Success Response (200 OK):
+ 
+```json
+{
+	"player_id": "player-uuid-100",
+	"online_status": "in-session"
+}
+```
+ 
+#### Get Inventory
+ 
+`GET /api/players/{player_id}/inventory` Description: Returns the player's owned consumables and cosmetic items.
+ 
+Success Response (200 OK):
+ 
 ```json
 {
 	"player_id": "player-uuid-100",
@@ -211,17 +249,18 @@ Success Response (200 OK):
 	]
 }
 ```
+ 
+#### Grant Item to Inventory
 
-#### Add Item to Inventory
-
-`POST /api/players/{player_id}/inventory/items` Description: Grants an item to the player's inventory. Called by the Crafting Service once an item finishes crafting.
+`POST /api/players/{player_id}/inventory/items` Description: Grants an item to the player's inventory. Called by the Crafting Service once an item finishes crafting. The `event_id` is a unique identifier for the granting event; sending the same event multiple times doesn't result in compounding quantity.
 
 Request Body:
 
 ```json
 {
 	"item_id": "item-uuid-701",
-	"quantity": 1
+	"quantity": 1,
+	"event_id": "craft-uuid-800"
 }
 ```
 
@@ -231,25 +270,26 @@ Success Response (200 OK):
 {
 	"player_id": "player-uuid-100",
 	"item_id": "item-uuid-701",
-	"quantity": 1
+	"quantity": 3
 }
 ```
-
-#### Apply Progression Change
-
-`PATCH /api/players/{player_id}/progression` Description: Applies an XP change and recalculates level. Called by the Game, Exam and Crafting Services when they resolve an action that awards progression.
-
+ 
+#### Submit an event that affects players progression
+ 
+`POST /api/players/{player_id}/progression-events` Description: Submits an event that alters players progression. The even_id is an unique identifier for said event, sending the same event multiple times doesn't result in compunding change.
+ 
 Request Body:
-
+ 
 ```json
 {
 	"xp_delta": 150,
-	"reason": "gathering_action_completed"
+	"reason": "gathering_action_completed",
+	"event_id": "action-uuid-300"
 }
 ```
-
+ 
 Success Response (200 OK):
-
+ 
 ```json
 {
 	"player_id": "player-uuid-100",
@@ -258,13 +298,13 @@ Success Response (200 OK):
 	"leveled_up": false
 }
 ```
-
+ 
 #### Propose Trade
-
+ 
 `POST /api/trades` Description: Creates a trade offer between two players, including across lobbies.
-
+ 
 Request Body:
-
+ 
 ```json
 {
 	"from_player_id": "player-uuid-100",
@@ -273,48 +313,48 @@ Request Body:
 	"requested_item_ids": ["item-uuid-702"]
 }
 ```
-
+ 
 Success Response (201 Created):
-
+ 
 ```json
 {
 	"trade_id": "trade-uuid-900",
 	"status": "pending"
 }
 ```
-
+ 
 #### Accept Trade
-
+ 
 `POST /api/trades/{trade_id}/accept` Description: Verifies ownership of all offered/requested items and performs the transfer atomically. Returns `409 Conflict` if either party no longer owns the listed items.
-
+ 
 Success Response (200 OK):
-
+ 
 ```json
 {
 	"trade_id": "trade-uuid-900",
 	"status": "completed"
 }
 ```
-
+ 
 #### Decline Trade
-
+ 
 `POST /api/trades/{trade_id}/decline` Description: Cancels a pending trade offer.
-
+ 
 Success Response (200 OK):
-
+ 
 ```json
 {
 	"trade_id": "trade-uuid-900",
 	"status": "declined"
 }
 ```
-
+ 
 #### Get Trade
-
+ 
 `GET /api/trades/{trade_id}` Description: Returns the current state of a trade.
-
+ 
 Success Response (200 OK):
-
+ 
 ```json
 {
 	"trade_id": "trade-uuid-900",
