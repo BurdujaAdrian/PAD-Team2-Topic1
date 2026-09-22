@@ -2,17 +2,17 @@
 
 PAD Team 2's Common Public Repository
 
-| Nume              | Servicii                            | Language | Database |
-| ----------------- | ----------------------------------- | -------- | -------- |
-| Burduja Adrian    | Player Service, Game Service        | Go       | SQLite   |
-| Gurschi Gheorghe  | Exam Service, World Service         | Go       | SQLite   |
-| Vornicescu Ion    | Zombie Service, Resource Service    | C#       | PostgreSQL         |
-| Marga Alexandru   | Base Service, Crafting Service      | C#       | PostgreSQL         |
+
+| Name             | Services                         | Language | Database |
+| ---------------- | -------------------------------- | -------- | -------- |
+| Burduja Adrian   | Player Service, Game Service     | Go       | SQLite   |
+| Gurschi Gheorghe | Exam Service, World Service      | Go       | SQLite   |
+| Vornicescu Ion   | Base Service, Crafting Service   | C#       | SQLite   |
+| Magla Alexandru  | Zombie Service, Resource Service | C#       | SQLite   |
 
 ## Diagram
 
-![PAD architecture](docs/images/pad-architecture-v4(1).jpg)
-
+![PAD architecture](docs/images/diagram.png)
 
 # Service Boundaries
 
@@ -51,7 +51,7 @@ Success Response (201 Created):
  
 #### Login
  
-`POST /api/players/login` Description: Authenticates a player and issues a session token.
+`POST /api/players/login` Description: Authenticates a player
  
 Request Body:
  
@@ -66,7 +66,6 @@ Success Response (200 OK):
  
 ```json
 {
-	"token": "jwt-token-string",
 	"player_id": "player-uuid-100"
 }
 ```
@@ -74,7 +73,7 @@ Success Response (200 OK):
 #### Get Player Profile
  
 `GET /api/players/{player_id}` Description: Returns identity, progression and presence for a player.
- 
+
 Success Response (200 OK):
  
 ```json
@@ -83,6 +82,7 @@ Success Response (200 OK):
 	"username": "alex_faf",
 	"xp": 1200,
 	"level": 5,
+	"avatar":"img.png",
 	"online_status": "online"
 }
 ```
@@ -109,7 +109,27 @@ Success Response (200 OK):
 	"avatar": "avatar-uuid-12"
 }
 ```
- 
+
+#### Delete Player Progile
+`DELETE /api/players/{player_id}` Description: Delete the profile of a player
+
+Success Response (204 No Content)
+
+#### Get Friendship Status
+
+`GET /api/players/{player_id}/friends/{other_player_id}` Description: Returns the current relationship state between the two players — friends, a pending request in either direction, or none.
+
+Success Response (200 OK):
+
+```json
+{
+	"player_id": "player-uuid-100",
+	"other_player_id": "player-uuid-103",
+	"status": "pending_outgoing",
+	"request_id": "friend-req-uuid-501"
+}
+```
+
 #### List Friends
  
 `GET /api/players/{player_id}/friends` Description: Returns the player's friend list with current presence.
@@ -119,7 +139,6 @@ Success Response (200 OK):
 ```json
 {
 	"player_id": "player-uuid-100",
-	"count": 2,
 	"friends": [
 		{
 			"player_id": "player-uuid-101",
@@ -129,16 +148,35 @@ Success Response (200 OK):
 	]
 }
 ```
- 
+
+#### List Incoming Friend Requests
+
+`GET /api/players/{player_id}/friends/requests` Description: Returns pending friend requests sent *to* this player by others. Does not include requests this player has sent out.
+
+Success Response (200 OK):
+
+```json
+{
+	"player_id": "player-uuid-100",
+	"items": [
+		{
+			"request_id": "friend-req-uuid-500",
+			"from_player_id": "player-uuid-102",
+			"username": "george_faf",
+			"status": "pending"
+		}
+	]
+}
+```
+
 #### Send Friend Request
  
 `POST /api/players/{player_id}/friends/requests` Description: Sends a friend request to another player.
- 
-Request Body:
- 
+
+Request body:
 ```json
 {
-	"target_player_id": "player-uuid-101"
+	"target_player_id":"friend-uuid-100"
 }
 ```
  
@@ -212,39 +250,41 @@ Success Response (200 OK):
 }
 ```
  
-#### Add Item to Inventory
- 
-`POST /api/players/{player_id}/inventory/items` Description: Grants an item to the player's inventory. Called by the Crafting Service once an item finishes crafting.
- 
+#### Grant Item to Inventory
+
+`POST /api/players/{player_id}/inventory/items` Description: Grants an item to the player's inventory. Called by the Crafting Service once an item finishes crafting. The `event_id` is a unique identifier for the granting event; sending the same event multiple times doesn't result in compounding quantity.
+
 Request Body:
- 
+
 ```json
 {
 	"item_id": "item-uuid-701",
-	"quantity": 1
+	"quantity": 1,
+	"event_id": "craft-uuid-800"
 }
 ```
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"player_id": "player-uuid-100",
 	"item_id": "item-uuid-701",
-	"quantity": 1
+	"quantity": 3
 }
 ```
  
-#### Apply Progression Change
+#### Submit an event that affects players progression
  
-`PATCH /api/players/{player_id}/progression` Description: Applies an XP change and recalculates level. Called by the Game, Exam and Crafting Services when they resolve an action that awards progression.
+`POST /api/players/{player_id}/progression-events` Description: Submits an event that alters players progression. The even_id is an unique identifier for said event, sending the same event multiple times doesn't result in compunding change.
  
 Request Body:
  
 ```json
 {
 	"xp_delta": 150,
-	"reason": "gathering_action_completed"
+	"reason": "gathering_action_completed",
+	"event_id": "action-uuid-300"
 }
 ```
  
@@ -343,56 +383,56 @@ Does not own the exam system - Exam Service does; Game Service can request exams
 Does not own the configuration of zombies - Zombie Service does; Game Service can query the Zombie Service for configurations.
 
 ### Endpoints
- 
+
 #### Create Session
- 
+
 `POST /api/sessions` Description: Creates a new session/lobby on a given map.
- 
+
 Request Body:
- 
+
 ```json
 {
 	"host_player_id": "player-uuid-100",
 	"map_id": "world-uuid-100"
 }
 ```
- 
+
 Success Response (201 Created):
- 
+
 ```json
 {
 	"session_id": "session-uuid-200",
 	"status": "lobby"
 }
 ```
- 
+
 #### Join Session
- 
+
 `POST /api/sessions/{session_id}/join` Description: Adds a player to an existing lobby.
- 
+
 Request Body:
- 
+
 ```json
 {
 	"player_id": "player-uuid-101"
 }
 ```
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"session_id": "session-uuid-200",
 	"player_ids": ["player-uuid-100", "player-uuid-101"]
 }
 ```
- 
+
 #### Get Session State
- 
+
 `GET /api/sessions/{session_id}` Description: Returns the current cycle, timer and participants for a session.
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"session_id": "session-uuid-200",
@@ -402,13 +442,13 @@ Success Response (200 OK):
 	"status": "active"
 }
 ```
- 
+
 #### Start Timed Action
- 
+
 `POST /api/sessions/{session_id}/actions` Description: Starts a timed player action (chop, scavenge, clear room, barricade, repair). Progress is delivered over the session's WebSocket connection.
- 
+
 Request Body:
- 
+
 ```json
 {
 	"player_id": "player-uuid-100",
@@ -416,9 +456,9 @@ Request Body:
 	"target_room_id": "room-uuid-204"
 }
 ```
- 
+
 Success Response (202 Accepted):
- 
+
 ```json
 {
 	"action_id": "action-uuid-300",
@@ -426,13 +466,13 @@ Success Response (202 Accepted):
 	"status": "in-progress"
 }
 ```
- 
+
 #### Get Action Status
- 
+
 `GET /api/sessions/{session_id}/actions/{action_id}` Description: Polls the status of a timed action.
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"action_id": "action-uuid-300",
@@ -440,26 +480,26 @@ Success Response (200 OK):
 	"remaining_seconds": 180
 }
 ```
- 
+
 #### Cancel Action
- 
+
 `DELETE /api/sessions/{session_id}/actions/{action_id}` Description: Cancels an in-progress action before it completes.
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"action_id": "action-uuid-300",
 	"status": "cancelled"
 }
 ```
- 
+
 #### List Active Zombies
- 
+
 `GET /api/sessions/{session_id}/zombies` Description: Returns zombies currently spawned for this session's cycle. This state is short-lived and owned by the Game Service, unlike zombie type definitions which belong to the Zombie Service.
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"session_id": "session-uuid-200",
@@ -474,13 +514,13 @@ Success Response (200 OK):
 	]
 }
 ```
- 
+
 ### Live Session Updates
- 
+
 `WS /api/sessions/{session_id}/live` Description: Server-pushed events for real-time gameplay progress.
- 
+
 Event `action.completed`:
- 
+
 ```json
 {
 	"action_id": "action-uuid-300",
@@ -488,9 +528,9 @@ Event `action.completed`:
 	"type": "scavenge"
 }
 ```
- 
+
 Event `zombie.spawned`:
- 
+
 ```json
 {
 	"zombie_id": "zombie-uuid-400",
@@ -498,26 +538,26 @@ Event `zombie.spawned`:
 	"room_id": "room-uuid-205"
 }
 ```
- 
+
 Event `zombie.attack`:
- 
+
 ```json
 {
 	"zombie_id": "zombie-uuid-400",
 	"target_player_id": "player-uuid-100"
 }
 ```
- 
+
 Event `cycle.changed`:
- 
+
 ```json
 {
 	"cycle": "night"
 }
 ```
- 
+
 Event `session.ended`:
- 
+
 ```json
 {
 	"result": "survived"
@@ -939,20 +979,20 @@ Success Response (200 OK):
 
 ```json
 {
-  "count": 2,
-  "zombie_types": [
-    {
-      "zombie_type_id": "zombie-type-uuid-601",
-      "name": "Professor Zombie",
-      "category": "professor",
-      "health": 120,
-      "speed": 1.2,
-      "attack_strength": 18,
-      "perception_radius": 14,
-      "abilities": ["exam_encounter"],
-      "active": true
-    }
-  ]
+	"count": 2,
+	"zombie_types": [
+		{
+			"zombie_type_id": "zombie-type-uuid-601",
+			"name": "Professor Zombie",
+			"category": "professor",
+			"health": 120,
+			"speed": 1.2,
+			"attack_strength": 18,
+			"perception_radius": 14,
+			"abilities": ["exam_encounter"],
+			"active": true
+		}
+	]
 }
 ```
 
@@ -964,15 +1004,15 @@ Success Response (200 OK):
 
 ```json
 {
-  "zombie_type_id": "zombie-type-uuid-601",
-  "name": "Professor Zombie",
-  "category": "professor",
-  "health": 120,
-  "speed": 1.2,
-  "attack_strength": 18,
-  "perception_radius": 14,
-  "abilities": ["exam_encounter"],
-  "active": true
+	"zombie_type_id": "zombie-type-uuid-601",
+	"name": "Professor Zombie",
+	"category": "professor",
+	"health": 120,
+	"speed": 1.2,
+	"attack_strength": 18,
+	"perception_radius": 14,
+	"abilities": ["exam_encounter"],
+	"active": true
 }
 ```
 
@@ -984,13 +1024,13 @@ Error Responses: `404 Not Found` - unknown zombie type.
 
 ```json
 {
-  "name": "Fast Tourist",
-  "category": "tourist",
-  "health": 80,
-  "speed": 2.1,
-  "attack_strength": 12,
-  "perception_radius": 10,
-  "abilities": ["sprint"]
+	"name": "Fast Tourist",
+	"category": "tourist",
+	"health": 80,
+	"speed": 2.1,
+	"attack_strength": 12,
+	"perception_radius": 10,
+	"abilities": ["sprint"]
 }
 ```
 
@@ -998,15 +1038,15 @@ Success Response (201 Created):
 
 ```json
 {
-  "zombie_type_id": "zombie-type-uuid-602",
-  "name": "Fast Tourist",
-  "category": "tourist",
-  "health": 80,
-  "speed": 2.1,
-  "attack_strength": 12,
-  "perception_radius": 10,
-  "abilities": ["sprint"],
-  "active": true
+	"zombie_type_id": "zombie-type-uuid-602",
+	"name": "Fast Tourist",
+	"category": "tourist",
+	"health": 80,
+	"speed": 2.1,
+	"attack_strength": 12,
+	"perception_radius": 10,
+	"abilities": ["sprint"],
+	"active": true
 }
 ```
 
@@ -1044,13 +1084,13 @@ Success Response (200 OK):
 
 ```json
 {
-  "player_id": "player-uuid-123",
-  "resources": [
-    { "resource_type": "wood", "quantity": 24 },
-    { "resource_type": "metal", "quantity": 8 },
-    { "resource_type": "paper", "quantity": 12 },
-    { "resource_type": "food", "quantity": 5 }
-  ]
+	"player_id": "player-uuid-123",
+	"resources": [
+		{ "resource_type": "wood", "quantity": 24 },
+		{ "resource_type": "metal", "quantity": 8 },
+		{ "resource_type": "paper", "quantity": 12 },
+		{ "resource_type": "food", "quantity": 5 }
+	]
 }
 ```
 
@@ -1062,11 +1102,11 @@ Success Response (200 OK):
 
 ```json
 {
-  "node_id": "node-uuid-410",
-  "resource_type": "metal",
-  "quantity": 18,
-  "max_capacity": 50,
-  "available": true
+	"node_id": "node-uuid-410",
+	"resource_type": "metal",
+	"quantity": 18,
+	"max_capacity": 50,
+	"available": true
 }
 ```
 
@@ -1078,11 +1118,11 @@ Error Responses: `404 Not Found` - unknown or unavailable resource node.
 
 ```json
 {
-  "action_id": "gather-action-uuid-801",
-  "player_id": "player-uuid-123",
-  "node_id": "node-uuid-410",
-  "resource_type": "metal",
-  "quantity": 3
+	"action_id": "gather-action-uuid-801",
+	"player_id": "player-uuid-123",
+	"node_id": "node-uuid-410",
+	"resource_type": "metal",
+	"quantity": 3
 }
 ```
 
@@ -1090,13 +1130,13 @@ Success Response (200 OK):
 
 ```json
 {
-  "action_id": "gather-action-uuid-801",
-  "applied": true,
-  "player_id": "player-uuid-123",
-  "resource_type": "metal",
-  "quantity_added": 3,
-  "player_quantity": 11,
-  "node_quantity": 15
+	"action_id": "gather-action-uuid-801",
+	"applied": true,
+	"player_id": "player-uuid-123",
+	"resource_type": "metal",
+	"quantity_added": 3,
+	"player_quantity": 11,
+	"node_quantity": 15
 }
 ```
 
@@ -1108,13 +1148,13 @@ Error Responses: `409 Conflict` - action already applied or node is depleted. `4
 
 ```json
 {
-  "transaction_id": "craft-transaction-uuid-901",
-  "player_id": "player-uuid-123",
-  "reason": "crafting",
-  "items": [
-    { "resource_type": "wood", "quantity": 5 },
-    { "resource_type": "metal", "quantity": 2 }
-  ]
+	"transaction_id": "craft-transaction-uuid-901",
+	"player_id": "player-uuid-123",
+	"reason": "crafting",
+	"items": [
+		{ "resource_type": "wood", "quantity": 5 },
+		{ "resource_type": "metal", "quantity": 2 }
+	]
 }
 ```
 
@@ -1122,13 +1162,13 @@ Success Response (200 OK):
 
 ```json
 {
-  "transaction_id": "craft-transaction-uuid-901",
-  "consumed": true,
-  "player_id": "player-uuid-123",
-  "remaining": {
-    "wood": 19,
-    "metal": 6
-  }
+	"transaction_id": "craft-transaction-uuid-901",
+	"consumed": true,
+	"player_id": "player-uuid-123",
+	"remaining": {
+		"wood": 19,
+		"metal": 6
+	}
 }
 ```
 
@@ -1154,6 +1194,113 @@ Does not own resource quantities - Resource Service owns them; Base Service requ
 
 Does not own player inventory - Player Service owns it; any items or rewards a player receives (e.g. through Kiki) are transferred there.
 
+### Endpoints
+
+#### Get Base State
+
+`GET /api/bases/{base_id}`
+Description: Returns the full current state of a player's base.
+
+Success Response (200 OK):
+
+```json
+{
+	"base_id": "base-uuid-001",
+	"player_id": "player-uuid-123",
+	"defense_score": 42,
+	"storage_capacity": 100,
+	"rooms": [
+		{
+			"room_id": "room-uuid-201",
+			"world_room_id": "room-uuid-201",
+			"upgrade_level": 2,
+			"barricade_level": 1
+		}
+	],
+	"facilities": [{ "facility_id": "facility-uuid-301", "type": "crafting_station", "level": 1 }]
+}
+```
+
+Error Responses: `404 Not Found` — no base exists for this player.
+
+#### Reinforce a Room's Barricade
+
+`POST /api/bases/{base_id}/rooms/{room_id}/reinforce`
+Description: Upgrades a room's barricade level. Validates and deducts resources via the Resource Service before applying the change. Idempotent by `request_id`.
+
+Payload:
+
+```json
+{
+	"request_id": "request-uuid-501",
+	"target_barricade_level": 2
+}
+```
+
+Success Response (200 OK):
+
+```json
+{
+	"room_id": "room-uuid-201",
+	"barricade_level": 2,
+	"resources_spent": { "wood": 20, "metal_scraps": 10 }
+}
+```
+
+Error Responses: `409 Conflict` — insufficient resources, or room not eligible (queried from World Service).
+
+```json
+{ "error": "insufficient_resources", "required": { "wood": 20, "metal_scraps": 10 } }
+```
+
+#### Upgrade a Facility
+
+`POST /api/bases/{base_id}/facilities/{facility_id}/upgrade`
+Description: Upgrades a facility one level. Validates and deducts resources via the Resource Service.
+
+Success Response (200 OK):
+
+```json
+{
+	"facility_id": "facility-uuid-301",
+	"type": "crafting_station",
+	"level": 2,
+	"resources_spent": { "metal_scraps": 15, "paper": 5 }
+}
+```
+
+Error Responses: `404 Not Found` — facility does not exist on this base. `409 Conflict` — insufficient resources.
+
+#### Trigger Kiki Interaction
+
+`POST /api/bases/{base_id}/kiki/interact`
+Description: Triggers a random reward interaction with Kiki, granted to the base's owner via the Player Service.
+
+Success Response (200 OK):
+
+```json
+{
+	"reward_type": "booster",
+	"reward_id": "reward-uuid-601",
+	"granted_to": "player-uuid-123"
+}
+```
+
+Error Responses: `429 Too Many Requests` — cooldown not elapsed
+
+#### Service Status
+
+`GET /api/status`
+Description: Health check.
+
+Success Response (200 OK):
+
+```json
+{ "service": "base", "status": "ok", "uptime_seconds": 1234 }
+```
+
+---
+
 ## Crafting Service
 
 Owns recipe definitions (required inputs, output item), recipe unlock conditions, and the atomic crafting operation (validating materials and executing the craft).
@@ -1163,10 +1310,110 @@ Does not own resource quantities - Resource Service owns them; Crafting Service 
 Does not own the player's inventory - Player Service owns it; crafted objects are transferred there once the craft succeeds.
 
 Does not own exam/level/unlock progress - Exam Service and Player Service own it; Crafting Service checks against it to determine if a recipe is available to a player.
+
+### Endpoints
+
+#### List Available Recipes for a Player
+
+`GET /api/players/{player_id}/recipes/available`
+Description: Returns recipes currently unlocked for the given player, after checking exam/level/wing conditions against the Exam and Player Services.
+
+Success Response (200 OK):
+
+```json
+{
+	"player_id": "player-uuid-123",
+	"recipes": [
+		{
+			"recipe_id": "recipe-uuid-701",
+			"name": "barricade_kit",
+			"inputs": [
+				{ "resource": "wood", "amount": 10 },
+				{ "resource": "metal_scraps", "amount": 5 }
+			],
+			"output": { "item": "barricade_kit", "quantity": 1 }
+		}
+	]
+}
+```
+
+#### Get Recipe Detail
+
+`GET /api/recipes/{recipe_id}`
+Description: Returns full detail of a single recipe, including its unlock condition.
+
+Success Response (200 OK):
+
+```json
+{
+	"recipe_id": "recipe-uuid-702",
+	"name": "exam_cheat_sheet",
+	"inputs": [
+		{ "resource": "paper", "amount": 5 },
+		{ "resource": "wood", "amount": 2 }
+	],
+	"output": { "item": "exam_cheat_sheet", "quantity": 1 },
+	"unlock_condition": { "type": "exam_passed", "course_id": "math_analysis" }
+}
+```
+
+Error Responses: `404 Not Found` — unknown recipe.
+
+#### Craft an Item
+
+`POST /api/crafting/craft`
+Description: Attempts to craft an item. Validates the unlock condition, deducts resources via the Resource Service, and grants the item via the Player Service — atomically. Idempotent by `idempotency_key`, so retries or reconnects can't double-craft.
+
+Payload:
+
+```json
+{
+	"player_id": "player-uuid-123",
+	"recipe_id": "recipe-uuid-701",
+	"idempotency_key": "craft-uuid-801"
+}
+```
+
+Success Response (201 Created):
+
+```json
+{
+	"craft_id": "craft-uuid-801",
+	"item_granted": { "item_id": "item-uuid-901", "type": "barricade_kit" },
+	"resources_spent": { "wood": 10, "metal_scraps": 5 },
+	"crafted_at": "2026-09-09T10:12:00Z"
+}
+```
+
+Success Response (200 OK) — duplicate request, same `idempotency_key`:
+
+```json
+{ "craft_id": "craft-uuid-801", "status": "already_processed" }
+```
+
+Error Responses: `409 Conflict` — recipe locked or insufficient resources.
+
+```json
+{ "error": "recipe_locked", "reason": "exam_not_passed", "required_course_id": "math_analysis" }
+```
+
+#### Service Status
+
+`GET /api/status`
+Description: Health check.
+
+Success Response (200 OK):
+
+```json
+{ "service": "crafting", "status": "ok", "uptime_seconds": 1234 }
+```
+
 # Technologies and Communication patterns
 
 ## Player Service
-### Go Programming language: 
+
+### Go Programming language:
+
 \+ Great concurrency and synchronization model. Satisfies the requirement of having atomic trading.
 
 \+ Goroutines enable small but frequent updates to the state in an concurrent context. Satisfies updating players Progression via calls from various services.
@@ -1176,27 +1423,31 @@ Does not own exam/level/unlock progress - Exam Service and Player Service own it
 \- Does not provide automatic/guaranteed protections against data races. Dissatisfies the CRUD heavy nature of the service.
 
 ### Sqlite:
+
 \+ Zero-config, serverless engine. No separate database process to run or coordinate in the Player Service's Docker image, keeping deployment simple.
 
 \+ Relational model with joins fits Player Service's data shape directly. Player <-> friends <-> inventory <-> trades relationships are very well modeled by SQL.
 
 \+ ACID transactions give the atomic trade requirement a built-in mechanism. Perform the updates in one transaction rather than building atomicity by hand.
 
-\- Single-writer lock: writes serialize regardless of how many goroutines are handling requests concurrently. The progression endpoint gets called frequently by Game, Exam and Crafting Service — under load, those writes queue up despite the app-layer concurrency.
+\- Single-writer lock: writes serialize regardless of how many goroutines are handling requests concurrently. The progression endpoint gets called frequently by Game, Exam and Crafting Service under load, those writes queue up despite the app-layer concurrency.
 
 ## Game Service
+
 ### Go Programming language:
+
 \+ Goroutines are cheap enough to run one per active timer/WebSocket connection. They can work with many sessions running several parallel timers each (chop, scavenge, barricade...).
 
 \+ Non-blocking I/O via goroutines lets a delegate calls to World, Resource, Base, Exam and Zombie Service concurrently.
 
-\+ Low memory overhead per goroutine means many concurrent sessions/timers can run at the same time. 
+\+ Low memory overhead per goroutine means many concurrent sessions/timers can run at the same time.
 
 \- Concurrency primitives are low-level (goroutines + channels/mutexes). Game Service has the most shared mutable state (session, cycle, active zombies) of any service in the project.
 
 \- Goroutines/timers tied to a session must be explicitly cancelled (`context.Context`) on disconnect or session end. Risks leaking goroutines.
 
 ### Sqlite:
+
 \+ ACID transactions matter for anything Game Service needs to persist across restarts. Enables recovering in-progress session/timer state after a crash, or writing a finished session's outcome to history.
 
 \+ Zero-config, serverless. Same deployment as the rest of the stack.
@@ -1206,53 +1457,186 @@ Does not own exam/level/unlock progress - Exam Service and Player Service own it
 \- Most of what Game Service holds (active session/timer state) is short-lived. Only the state that truly needs to persist even after shutdowns of the system need to be stored(session history, lobbies, results, etc. ).
 
 ## Exam Service
- 
+
 ### Go Programming language:
- 
+
 \+ Cheap goroutines and `context.WithTimeout` express per-attempt exam timers. Satisfies expiring attempts server-side while many run in parallel.
- 
+
 \+ Low per-request overhead and no warm-up. Satisfies keeping the blocking Professor Zombie encounter fast.
- 
+
 \+ Same language as Player and Game Services, our main callers. Shared DTOs remove contract drift.
- 
+
 \- Verbose error handling. Every idempotency branch becomes an explicit check.
- 
+
 \- No mature ORM. All SQL is written by hand.
- 
+
 ### SQLite:
- 
+
 \+ Serializable transactions by default. Satisfies computing the score, closing the attempt and recording achievements atomically.
- 
+
 \+ Data is small and bounded: a static question bank plus one semester of attempts. Satisfies the per-service database requirement at zero operational cost.
- 
+
 \- Single writer. Concurrent submits serialize, mitigated with WAL mode.
- 
+
 \- No horizontal scaling. A later replication requirement would force a migration.
- 
+
 ## World Service
- 
+
 ### Go Programming language:
- 
+
 \+ Handles high request rates on modest hardware. Satisfies serving map queries on every cycle tick, our heaviest read path.
- 
+
 \+ Procedural generation runs in a goroutine while handlers keep serving. Satisfies unlocking a wing without freezing the map.
- 
+
 \+ Single static binary, no runtime dependency. Satisfies fast startup during a demo.
- 
+
 \- Same verbosity cost as above.
- 
+
 \- Nested map responses are tedious to build without record syntax.
- 
+
 ### SQLite:
- 
+
 \+ The map is read-heavy and write-rare, changing only on unlock. The single-writer limit costs us nothing here.
- 
+
 \+ WAL mode keeps readers unblocked during a write. Satisfies serving queries while the map expands.
- 
+
 \+ Rooms, adjacency, nodes and spawn points insert in one transaction keyed by `trigger_id`. Satisfies idempotent event consumption.
- 
+
 \- No graph traversal. Pathfinding, if needed later, lives in application code.
 
+ion to a server-based database.
+
+## Base Service
+
+### C# Programming language:
+
+\+ Async/await gives clean, non-blocking I/O for the calls Base Service fans out on every action (Resource Service for validation/deduction, World Service for room eligibility).
+
+\+ Strong static typing catches mismatched state transitions (e.g. applying a barricade upgrade to a room that doesn't exist yet) at compile time rather than at runtime. Satisfies the CRUD-and-validation-heavy nature of the service.
+
+\- Heavier runtime and slower cold start, though not significant for a request-driven service.
+
+\- More verbose dependency setup (DI container, EF Core context registration).
+
+SQLite:
+
+\+ Zero-config, serverless engine — no separate database process to run or coordinate in the Base Service's Docker image, keeping deployment simple and consistent with the rest of the team's services.
+
+\+ ACID transactions across related tables (base, rooms, barricades, facilities) let a single upgrade update several fields as one atomic unit, rather than building atomicity by hand.
+
+\+ Relational model with foreign keys fits the base → rooms → facilities/barricades hierarchy directly, and data volume per player (a handful of rows per base) stays well within what an embedded engine handles comfortably.
+
+\- Single-writer lock: writes serialize regardless of concurrent requests, mitigated with WAL mode.
+
+\- No horizontal scaling. Fine for this project data volume, but a real deployment with many concurrent players would eventually need a different engine.
+
+## Crafting Service
+
+### C# Programming language:
+
+\+ Database transactions via EF Core map cleanly onto the "validate → deduct → grant" sequence the crafting operation must perform atomically. Satisfies the lab's explicit atomicity requirement for crafting.
+
+\+ Strong typing on recipe definitions (inputs, outputs, unlock conditions) reduces the risk of a malformed recipe silently consuming resources without granting an item.
+
+\- Idempotency (via `idempotency_key`) has to be handled explicitly at the application layer — no built-in equivalent to Go's lightweight per-request goroutine isolation, so retried requests need a deliberate dedup check against stored craft records.
+
+\- Slower cold start, though not significant for a synchronous, low-frequency operation like crafting.
+
+SQLite:
+
+\+ ACID transactions by default guarantee the craft operation is genuinely all-or-nothing: if granting the item fails after resources were deducted, the transaction rolls back cleanly instead of leaving the player short on materials with nothing to show for it.
+
+\+ Recipes are read far more often than written (checked on every crafting attempt, changed rarely) and are small, bounded data (a handful of recipes plus craft history) — a good fit for an embedded engine with no operational overhead.
+
+\+ Unique constraint on `idempotency_key` per craft record gives duplicate-request protection almost for free at the schema level, rather than needing custom in-app locking.
+
+\- Single writer: concurrent craft attempts serialize, mitigated with WAL mode. Acceptable since crafting is a short, request/response operation rather than a sustained write workload.
+
+\- No horizontal scaling — fine at lab-project scale, but a later high-concurrency requirement would force a migration to a different engine.
+
+## Zombie Service
+
+### C# Programming language:
+
+\+ Strong static typing and built-in enums map naturally onto zombie categories (Professor/Tourist) and ability sets. Satisfies keeping type/category definitions validated at compile time rather than by runtime string checks.
+
+\+ Records and pattern matching keep read-heavy DTO code (type definitions, stat blocks) compact. Satisfies a service that is mostly CRUD over a fairly static configuration table.
+
+\+ ASP.NET Core's minimal APIs plus EF Core give a fast path from a small, well-defined schema (zombie types) to a working REST surface. Satisfies the service's small footprint — a handful of endpoints over one core entity.
+
+\- Larger runtime/startup footprint than a static Go binary. Not a meaningful cost here since Zombie Service is queried occasionally (not on every cycle tick like World Service), so startup/latency overhead is not on a hot path.
+
+SQLite:
+
+\+ Zero-config, serverless engine. No separate database process to run in the Zombie Service's Docker image, keeping deployment simple and consistent with the rest of the team's services.
+
+\+ The dataset is small and rarely written (zombie type definitions are configured once, then mostly read). The single-writer lock costs us nothing here, since writes only happen when an admin registers/updates a type.
+
+\+ WAL mode keeps reads (Game Service querying eligible types) unblocked while an admin writes a new/updated type. Satisfies Game Service needing low-latency reads even while the roster is being tuned.
+
+\- No native array/JSON column type as rich as some server-based engines; `abilities` has to be stored as a serialized string (e.g. comma-separated or JSON text) and parsed in application code. Acceptable since the ability list per type is small and read-only after creation.
+
+## Resource Service
+
+### C# Programming language:
+
+\+ Database transactions via EF Core map directly onto the idempotency requirement: wrapping "check if `action_id`/`transaction_id` was already processed" + "apply the change" in one transaction is straightforward and readable. Satisfies never awarding resources twice on a duplicated completion event.
+
+\+ Strong typing on quantity fields (using `int`/`decimal` with domain wrapper types) reduces the risk of silent unit/type errors when many other services (Game, Crafting, Base) send quantity payloads into this service.
+
+\+ Same language/runtime as Zombie Service lets us share validation and DTO code between our two services, reducing duplicated boilerplate within the sub-team.
+
+\- Higher per-request overhead than Go under very high concurrency. Acceptable since Resource Service's write volume is bounded by the number of concurrent timed actions across active sessions, not by raw request-per-second traffic.
+
+SQLite:
+
+\+ ACID transactions by default give the idempotency requirement a built-in mechanism: a unique constraint on `action_id`/`transaction_id` plus a single transaction covering the check-and-apply step, rather than building atomicity by hand.
+
+\+ Zero-config, serverless. Same deployment simplicity as the rest of the stack, with one file per service keeping our databases fully isolated from each other.
+
+\+ WAL mode lets reads (players/other services checking balances) proceed while a gather/consume write is being committed. Satisfies the service's mixed read/write workload without blocking readers on every write.
+
+\- Single-writer lock: concurrent gather-completion and consume calls from different players/nodes serialize regardless of how many requests arrive at once. Under heavy load this could become a bottleneck, since Resource Service is one of the more write-heavy services in the system — mitigated by keeping each transaction short (single row update) so the lock is held only briefly.
+
+\- No horizontal scaling story; a later requirement to scale Resource Service writes across multiple instances would force a migrat
+
+## Communication Patterns
+
+### Synchronous REST over HTTP (JSON)
+
+\+ The caller needs the answer before it can continue. Satisfies the Professor Zombie encounter, where Game Service blocks until Exam Service returns the questions, and the map queries Game Service issues on every cycle tick.
+
+\+ Language-neutral contract. Satisfies the two-language requirement — our Go and C# services share nothing but the JSON payloads defined above.
+
+\+ Request/response maps directly onto ownership boundaries. A service that needs data it does not own asks the owner for it, so there is one source of truth and no local copies to keep in sync.
+
+\- Temporal coupling: the callee must be up at the moment of the call. A World Service restart makes Game Service's room queries fail.
+
+\- The caller must know the callee's address. Adding a consumer means changing the caller.
+
+### Asynchronous event-driven pub/sub
+
+\+ One publisher, several consumers, none of them known to the publisher. Satisfies `section_unlocked`, consumed by both Resource Service (creates the economy entries) and Game Service (invalidates its map cache) — World Service calls neither.
+
+\+ The publisher does not wait for the outcome. Satisfies closing an exam attempt fast: the score is returned to the player immediately, while unlocking a wing and awarding XP happen afterwards.
+
+\+ Events survive a consumer being down. Satisfies not losing an `exam_passed` because World Service happened to be restarting.
+
+\- At-least-once delivery means events can arrive twice. Every consumer must deduplicate, which is why `exam_passed` carries `attempt_id` and `section_unlocked` carries `trigger_id`.
+
+\- Eventual consistency. There is a window in which the exam is passed but the new wing does not exist yet.
+
+\- Harder to debug. A failure surfaces in the consumer's logs, far from the publisher.
+
+### WebSockets
+
+\+ Server-initiated push over a single connection. Satisfies delivering progress for actions that run for minutes (chop for 10, scavenge for 5) without the client polling.
+
+\+ One connection carries every session event. Satisfies `action.completed`, `zombie.spawned`, `zombie.attack` and `cycle.changed` arriving in order on the same channel.
+
+\- Stateful connections. Game Service must cancel the goroutines and timers bound to a session on disconnect, or they leak.
+
+\- Only Game Service needs it. Exam and World Service stay request/response, since nothing they own changes without someone asking.
 
 # Contribution rules
 
@@ -1264,26 +1648,59 @@ Does not own exam/level/unlock progress - Exam Service and Player Service own it
 
 ## Ruleset: `main`
 
-| Setting | Value |
-|---|---|
-| Target branches | `main` (by pattern) |
-| Require a pull request before merging | On — 1 required approval |
-| Dismiss stale approvals on new commits | On |
-| Require approval of the most recent reviewable push | On |
-| Require conversation resolution before merging | On |
-| Restrict deletions | On |
-| Block force pushes | On |
-| Bypass list | Empty — no one bypasses these rules |
+
+| Setting                                             | Value                                |
+| --------------------------------------------------- | ------------------------------------ |
+| Target branches                                     | `main` (by pattern)                  |
+| Require a pull request before merging               | On — 1 required approval            |
+| Dismiss stale approvals on new commits              | On                                   |
+| Require approval of the most recent reviewable push | On                                   |
+| Require conversation resolution before merging      | On                                   |
+| Restrict deletions                                  | On                                   |
+| Block force pushes                                  | On                                   |
+| Bypass list                                         | Empty — no one bypasses these rules |
 
 ## Ruleset: `develop`
 
-| Setting | Value |
-|---|---|
-| Target branches | `develop` (by pattern) |
-| Require a pull request before merging | On — 1 required approval |
-| Dismiss stale approvals on new commits | On |
-| Require approval of the most recent reviewable push | On |
-| Require conversation resolution before merging | On |
-| Restrict deletions | On |
-| Block force pushes | On |
-| Bypass list | Empty |
+
+| Setting                                             | Value                     |
+| --------------------------------------------------- | ------------------------- |
+| Target branches                                     | `develop` (by pattern)    |
+| Require a pull request before merging               | On — 1 required approval |
+| Dismiss stale approvals on new commits              | On                        |
+| Require approval of the most recent reviewable push | On                        |
+| Require conversation resolution before merging      | On                        |
+| Restrict deletions                                  | On                        |
+| Block force pushes                                  | On                        |
+| Bypass list                                         | Empty                     |
+
+## Merging strategy
+
+- `feature/*`, `fix/*`, `chore/*` → `develop`: **squash and merge**
+- `develop` → `main`: **merge commit** (no squash), keeps release history
+- Delete the source branch after merge
+
+## Pull request content
+
+Every PR must include:
+
+- **Description** — what changed and why
+- **Related issue** — link/ID if applicable
+- **Type of change** — feature / fix / chore
+- **How it was tested**
+- **Checklist**:
+  - [ ]  Tests added/updated and passing
+  - [ ]  Self-review done
+  - [ ]  Docs updated if needed
+
+## Test coverage
+
+- CI runs the test suite on every PR
+- Minimum coverage: **80%**
+- PRs that drop coverage below the threshold are blocked from merging
+
+## Versioning
+
+- Semantic Versioning (`MAJOR.MINOR.PATCH`)
+- Version bumped and tagged on `main` at release time
+- `develop` stays on the next `-dev` pre-release version between releases
