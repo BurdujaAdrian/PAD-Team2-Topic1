@@ -1,0 +1,72 @@
+{
+  "info": {
+    "name": "PAD Lab 1 - Zombie Service",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "CRUD and validation checks for Zombie Service."
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8081" },
+    { "key": "run_id", "value": "" },
+    { "key": "zombie_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01 Zombie health / initialize run",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/status" },
+      "event": [
+        { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set(\"run_id\", pm.variables.replaceIn(\"{{$guid}}\"));"] } },
+        { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"] } }
+      ]
+    },
+    {
+      "name": "02 Create zombie",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/zombies/types",
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Fast Tourist\",\n  \"category\": \"tourist\",\n  \"health\": 80,\n  \"speed\": 2.1,\n  \"attack_strength\": 12,\n  \"perception_radius\": 10,\n  \"abilities\": [\n    \"sprint\"\n  ]\n}", "options": { "raw": { "language": "json" } } }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));", "pm.collectionVariables.set(\"zombie_id\", pm.response.json().zombie_type_id);"] } }]
+    },
+    {
+      "name": "03 Read zombie",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/zombies/types/{{zombie_id}}" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));", "pm.test(\"snake_case contract\", () => pm.expect(pm.response.json().attack_strength).to.eql(12));"] } }]
+    },
+    {
+      "name": "04 Filter zombies",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/zombies/types?category=tourist&active=true" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));", "pm.test(\"created type present\", () => pm.expect(pm.response.json().zombie_types.some(z => z.zombie_type_id === pm.collectionVariables.get(\"zombie_id\"))).to.eql(true));"] } }]
+    },
+    {
+      "name": "05 Reject bad stats",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/zombies/types",
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Fast Tourist\",\n  \"category\": \"tourist\",\n  \"health\": -1,\n  \"speed\": 2.1,\n  \"attack_strength\": 12,\n  \"perception_radius\": 10,\n  \"abilities\": [\n    \"sprint\"\n  ]\n}", "options": { "raw": { "language": "json" } } }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 422\", () => pm.response.to.have.status(422));"] } }]
+    },
+    {
+      "name": "06 Replace zombie",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/zombies/types/{{zombie_id}}",
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Fast Tourist\",\n  \"category\": \"tourist\",\n  \"health\": 100,\n  \"speed\": 2.1,\n  \"attack_strength\": 12,\n  \"perception_radius\": 10,\n  \"abilities\": [\n    \"sprint\"\n  ],\n  \"active\": false\n}", "options": { "raw": { "language": "json" } } }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));", "pm.test(\"updated fields\", () => { pm.expect(pm.response.json().health).to.eql(100); pm.expect(pm.response.json().active).to.eql(false); });"] } }]
+    },
+    {
+      "name": "26 Delete zombie",
+      "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/api/zombies/types/{{zombie_id}}" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));"] } }]
+    },
+    {
+      "name": "27 Deleted zombie missing",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/zombies/types/{{zombie_id}}" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 404\", () => pm.response.to.have.status(404));"] } }]
+    }
+  ]
+}
