@@ -1,0 +1,272 @@
+{
+	"info": {
+		"name": "Game Service",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8081"
+		},
+		{
+			"key": "ws_base_url",
+			"value": "ws://localhost:8081"
+		},
+		{
+			"key": "player_id",
+			"value": "player-uuid-100"
+		},
+		{
+			"key": "session_id",
+			"value": "session-uuid-200"
+		},
+		{
+			"key": "action_id",
+			"value": "action-uuid-300"
+		},
+		{
+			"key": "target_room_id",
+			"value": "room-uuid-204"
+		},
+		{
+			"key": "target_zombie_id",
+			"value": "zombie-uuid-400"
+		},
+		{
+			"key": "weapon_item_id",
+			"value": "item-uuid-701"
+		}
+	],
+	"item": [
+		{
+			"name": "Sessions",
+			"item": [
+				{
+					"name": "Create Session",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/sessions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"sessions"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"host_player_id\": \"{{player_id}}\",\n\t\"map_id\": \"world-uuid-100\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Join Session",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/sessions/{{session_id}}/join",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"sessions",
+								"{{session_id}}",
+								"join"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"player_id\": \"{{player_id}}\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Get Session State",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/api/sessions/{{session_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"sessions",
+								"{{session_id}}"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Actions",
+			"item": [
+				{
+					"name": "Start Timed Action - Scavenge",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/sessions/{{session_id}}/actions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"sessions",
+								"{{session_id}}",
+								"actions"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"player_id\": \"{{player_id}}\",\n\t\"type\": \"scavenge\",\n\t\"target_room_id\": \"{{target_room_id}}\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Start Timed Action - Attack Zombie",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/sessions/{{session_id}}/actions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"sessions",
+								"{{session_id}}",
+								"actions"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"player_id\": \"{{player_id}}\",\n\t\"type\": \"attack_zombie\",\n\t\"target_zombie_id\": \"{{target_zombie_id}}\",\n\t\"weapon_item_id\": \"{{weapon_item_id}}\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Get Action Status",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/api/sessions/{{session_id}}/actions/{{action_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"sessions",
+								"{{session_id}}",
+								"actions",
+								"{{action_id}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Cancel Action",
+					"request": {
+						"method": "DELETE",
+						"url": {
+							"raw": "{{base_url}}/api/sessions/{{session_id}}/actions/{{action_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"sessions",
+								"{{session_id}}",
+								"actions",
+								"{{action_id}}"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Zombies",
+			"item": [
+				{
+					"name": "List Active Zombies",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/api/sessions/{{session_id}}/zombies",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"sessions",
+								"{{session_id}}",
+								"zombies"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Live (WebSocket)",
+			"item": [
+				{
+					"name": "Live Session Updates",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{ws_base_url}}/api/sessions/{{session_id}}/live?player_id={{player_id}}",
+							"host": [
+								"{{ws_base_url}}"
+							],
+							"path": [
+								"api",
+								"sessions",
+								"{{session_id}}",
+								"live"
+							],
+							"query": [
+								{
+									"key": "player_id",
+									"value": "{{player_id}}"
+								}
+							]
+						}
+					},
+					"protocolProfileBehavior": {
+						"disabledSystemHeaders": {}
+					}
+				}
+			]
+		}
+	]
+}
