@@ -3,12 +3,12 @@
 PAD Team 2's Common Public Repository
 
 
-| Name             | Services                         | Language | Database |
-| ---------------- | -------------------------------- | -------- | -------- |
-| Burduja Adrian   | Player Service, Game Service     | Go       | SQLite   |
-| Gurschi Gheorghe | Exam Service, World Service      | Go       | SQLite   |
-| Vornicescu Ion   | Base Service, Crafting Service   | C#       | SQLite   |
-| Magla Alexandru  | Zombie Service, Resource Service | C#       | SQLite   |
+| Name             | Services                         | Language | Database   |
+| ---------------- | -------------------------------- | -------- | ---------- |
+| Burduja Adrian   | Player Service, Game Service     | Go       | SQLite     |
+| Gurschi Gheorghe | Exam Service, World Service      | Go       | SQLite     |
+| Vornicescu Ion   | Base Service, Crafting Service   | C#       | PostgreSQL |
+| Magla Alexandru  | Zombie Service, Resource Service | C#       | PostgreSQL |
 
 ## Diagram
 
@@ -1518,17 +1518,17 @@ ion to a server-based database.
 
 \- More verbose dependency setup (DI container, EF Core context registration).
 
-SQLite:
+PostgreSQL:
 
-\+ Zero-config, serverless engine — no separate database process to run or coordinate in the Base Service's Docker image, keeping deployment simple and consistent with the rest of the team's services.
+\+ Runs as its own container via Docker Compose, decoupled from the API process — matches how the rest of the team's services are deployed and lets the database be scaled/managed independently.
 
 \+ ACID transactions across related tables (base, rooms, barricades, facilities) let a single upgrade update several fields as one atomic unit, rather than building atomicity by hand.
 
-\+ Relational model with foreign keys fits the base → rooms → facilities/barricades hierarchy directly, and data volume per player (a handful of rows per base) stays well within what an embedded engine handles comfortably.
+\+ Relational model with foreign keys (cascading deletes) fits the base → rooms → facilities/barricades hierarchy directly, and EF Core + Npgsql give strongly-typed migrations and querying.
 
-\- Single-writer lock: writes serialize regardless of concurrent requests, mitigated with WAL mode.
+\- Requires a separate database process/container, unlike an embedded engine — slightly more setup for local development.
 
-\- No horizontal scaling. Fine for this project data volume, but a real deployment with many concurrent players would eventually need a different engine.
+\- Out of scope for this lab stage, but unlike an embedded single-writer engine, Postgres also leaves room for horizontal read scaling later if the service ever needs it.
 
 ## Crafting Service
 
@@ -1542,17 +1542,17 @@ SQLite:
 
 \- Slower cold start, though not significant for a synchronous, low-frequency operation like crafting.
 
-SQLite:
+PostgreSQL:
 
-\+ ACID transactions by default guarantee the craft operation is genuinely all-or-nothing: if granting the item fails after resources were deducted, the transaction rolls back cleanly instead of leaving the player short on materials with nothing to show for it.
+\+ ACID transactions guarantee the craft operation is genuinely all-or-nothing: if granting the item fails after resources were deducted, the transaction rolls back cleanly instead of leaving the player short on materials with nothing to show for it.
 
-\+ Recipes are read far more often than written (checked on every crafting attempt, changed rarely) and are small, bounded data (a handful of recipes plus craft history) — a good fit for an embedded engine with no operational overhead.
+\+ Runs as its own container via Docker Compose, decoupled from the API process — matches how the rest of the team's services are deployed and keeps recipe/craft-history data isolated from other services.
 
-\+ Unique constraint on `idempotency_key` per craft record gives duplicate-request protection almost for free at the schema level, rather than needing custom in-app locking.
+\+ Unique constraint on `idempotency_key` per craft record gives duplicate-request protection at the schema level, and MVCC lets concurrent craft attempts from different players proceed without serializing on a single writer lock.
 
-\- Single writer: concurrent craft attempts serialize, mitigated with WAL mode. Acceptable since crafting is a short, request/response operation rather than a sustained write workload.
+\- Requires a separate database process/container, unlike an embedded engine — slightly more setup for local development.
 
-\- No horizontal scaling — fine at lab-project scale, but a later high-concurrency requirement would force a migration to a different engine.
+\- Some operational overhead (connection pooling, migrations against a running server) that an embedded engine wouldn't need, though not significant at this data volume.
 
 ## Zombie Service
 
@@ -1566,15 +1566,15 @@ SQLite:
 
 \- Larger runtime/startup footprint than a static Go binary. Not a meaningful cost here since Zombie Service is queried occasionally (not on every cycle tick like World Service), so startup/latency overhead is not on a hot path.
 
-SQLite:
+PostgreSQL:
 
-\+ Zero-config, serverless engine. No separate database process to run in the Zombie Service's Docker image, keeping deployment simple and consistent with the rest of the team's services.
+\+ Runs as its own container via Docker Compose, keeping deployment consistent with the rest of the team's services while decoupling the database from the API process.
 
-\+ The dataset is small and rarely written (zombie type definitions are configured once, then mostly read). The single-writer lock costs us nothing here, since writes only happen when an admin registers/updates a type.
+\+ The dataset is small and rarely written (zombie type definitions are configured once, then mostly read). MVCC means reads (Game Service querying eligible types) are never blocked by an admin writing a new/updated type — no need for WAL-mode-style workarounds.
 
-\+ WAL mode keeps reads (Game Service querying eligible types) unblocked while an admin writes a new/updated type. Satisfies Game Service needing low-latency reads even while the roster is being tuned.
+\+ Native array and JSON/JSONB column types let `abilities` be stored and queried as structured data directly, rather than a serialized string parsed in application code.
 
-\- No native array/JSON column type as rich as some server-based engines; `abilities` has to be stored as a serialized string (e.g. comma-separated or JSON text) and parsed in application code. Acceptable since the ability list per type is small and read-only after creation.
+\- Requires a separate database process/container, unlike an embedded engine — unnecessary operational overhead for a dataset this small and mostly static, though it keeps deployment consistent with the rest of the stack.
 
 ## Resource Service
 
@@ -1588,17 +1588,15 @@ SQLite:
 
 \- Higher per-request overhead than Go under very high concurrency. Acceptable since Resource Service's write volume is bounded by the number of concurrent timed actions across active sessions, not by raw request-per-second traffic.
 
-SQLite:
+PostgreSQL:
 
-\+ ACID transactions by default give the idempotency requirement a built-in mechanism: a unique constraint on `action_id`/`transaction_id` plus a single transaction covering the check-and-apply step, rather than building atomicity by hand.
+\+ ACID transactions give the idempotency requirement a built-in mechanism: a unique constraint on `action_id`/`transaction_id` plus a single transaction covering the check-and-apply step, rather than building atomicity by hand.
 
-\+ Zero-config, serverless. Same deployment simplicity as the rest of the stack, with one file per service keeping our databases fully isolated from each other.
+\+ Runs as its own container via Docker Compose, keeping deployment simplicity consistent with the rest of the stack while isolating Resource Service's data from the other services.
 
-\+ WAL mode lets reads (players/other services checking balances) proceed while a gather/consume write is being committed. Satisfies the service's mixed read/write workload without blocking readers on every write.
+\+ MVCC lets reads (players/other services checking balances) proceed without blocking on a gather/consume write being committed, and concurrent gather-completion/consume calls from different players don't serialize behind a single writer lock — a meaningful advantage since Resource Service is one of the more write-heavy services in the system.
 
-\- Single-writer lock: concurrent gather-completion and consume calls from different players/nodes serialize regardless of how many requests arrive at once. Under heavy load this could become a bottleneck, since Resource Service is one of the more write-heavy services in the system — mitigated by keeping each transaction short (single row update) so the lock is held only briefly.
-
-\- No horizontal scaling story; a later requirement to scale Resource Service writes across multiple instances would force a migrat
+\- Requires a separate database process/container, unlike an embedded engine — slightly more operational setup, though it leaves room for horizontal read scaling or connection pooling later if write volume grows.
 
 ## Communication Patterns
 
