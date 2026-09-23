@@ -1,0 +1,111 @@
+{
+  "info": {
+    "name": "PAD Lab 1 - Resource Service",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Resource CRUD, atomicity, idempotency and event checks for Resource Service."
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8082" },
+    { "key": "run_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "07 Resource health",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/status" },
+      "event": [
+        { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set(\"run_id\", pm.variables.replaceIn(\"{{$guid}}\"));"] } },
+        { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"] } }
+      ]
+    },
+    {
+      "name": "08 Create node",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/resource-nodes", "body": { "mode": "raw", "raw": "{\n  \"node_id\": \"node-{{run_id}}\",\n  \"resource_type\": \"metal\",\n  \"quantity\": 10,\n  \"max_capacity\": 50,\n  \"available\": true\n}", "options": { "raw": { "language": "json" } } } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));"] } }]
+    },
+    {
+      "name": "09 List nodes",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/resource-nodes" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"] } }]
+    },
+    {
+      "name": "10 Read node",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/resource-nodes/node-{{run_id}}" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"] } }]
+    },
+    {
+      "name": "11 Game mock: gathering completed",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/resource-transactions", "body": { "mode": "raw", "raw": "{\n  \"action_id\": \"gather-{{run_id}}\",\n  \"player_id\": \"player-{{run_id}}\",\n  \"node_id\": \"node-{{run_id}}\",\n  \"resource_type\": \"metal\",\n  \"quantity\": 3\n}", "options": { "raw": { "language": "json" } } } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));", "pm.test(\"atomic gathering\", () => { pm.expect(pm.response.json().player_quantity).to.eql(3); pm.expect(pm.response.json().node_quantity).to.eql(7); });"] } }]
+    },
+    {
+      "name": "12 Duplicate gathering",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/resource-transactions", "body": { "mode": "raw", "raw": "{\n  \"action_id\": \"gather-{{run_id}}\",\n  \"player_id\": \"player-{{run_id}}\",\n  \"node_id\": \"node-{{run_id}}\",\n  \"resource_type\": \"metal\",\n  \"quantity\": 3\n}", "options": { "raw": { "language": "json" } } } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));"] } }]
+    },
+    {
+      "name": "13 Crafting mock: consume",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/resource-transactions/consume", "body": { "mode": "raw", "raw": "{\n  \"transaction_id\": \"consume-{{run_id}}\",\n  \"player_id\": \"player-{{run_id}}\",\n  \"reason\": \"crafting\",\n  \"items\": [{ \"resource_type\": \"metal\", \"quantity\": 2 }]\n}", "options": { "raw": { "language": "json" } } } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));", "pm.test(\"remaining metal\", () => pm.expect(pm.response.json().remaining.metal).to.eql(1));"] } }]
+    },
+    {
+      "name": "14 Duplicate consumption",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/resource-transactions/consume", "body": { "mode": "raw", "raw": "{\n  \"transaction_id\": \"consume-{{run_id}}\",\n  \"player_id\": \"player-{{run_id}}\",\n  \"reason\": \"crafting\",\n  \"items\": [{ \"resource_type\": \"metal\", \"quantity\": 2 }]\n}", "options": { "raw": { "language": "json" } } } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));"] } }]
+    },
+    {
+      "name": "15 Atomic failure: insufficient wood",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/resource-transactions/consume", "body": { "mode": "raw", "raw": "{\n  \"transaction_id\": \"failed-{{run_id}}\",\n  \"player_id\": \"player-{{run_id}}\",\n  \"reason\": \"crafting\",\n  \"items\": [{ \"resource_type\": \"metal\", \"quantity\": 1 }, { \"resource_type\": \"wood\", \"quantity\": 1 }]\n}", "options": { "raw": { "language": "json" } } } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 422\", () => pm.response.to.have.status(422));"] } }]
+    },
+    {
+      "name": "16 Balance unchanged after failure",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/players/player-{{run_id}}/resources" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));", "pm.test(\"metal preserved\", () => pm.expect(pm.response.json().resources.find(r => r.resource_type === \"metal\").quantity).to.eql(1));"] } }]
+    },
+    {
+      "name": "17 Retry corrected failed operation",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/resource-transactions/consume", "body": { "mode": "raw", "raw": "{\n  \"transaction_id\": \"failed-{{run_id}}\",\n  \"player_id\": \"player-{{run_id}}\",\n  \"reason\": \"crafting\",\n  \"items\": [{ \"resource_type\": \"metal\", \"quantity\": 1 }]\n}", "options": { "raw": { "language": "json" } } } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"] } }]
+    },
+    {
+      "name": "18 World mock: section_unlocked",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/events/section-unlocked", "body": { "mode": "raw", "raw": "{\n  \"event_id\": \"event-{{run_id}}\",\n  \"world_id\": \"world-mock\",\n  \"section_id\": \"section-mock\",\n  \"trigger_id\": \"trigger-mock\",\n  \"rooms\": [{ \"room_id\": \"room-mock\", \"type\": \"laboratory\" }],\n  \"resource_nodes\": [{ \"node_id\": \"event-node-{{run_id}}\", \"room_id\": \"room-mock\", \"resource_type\": \"wood\" }],\n  \"occurred_at\": \"2026-09-08T14:37:02Z\"\n}", "options": { "raw": { "language": "json" } } } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"] } }]
+    },
+    {
+      "name": "19 Duplicate World event",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/events/section-unlocked", "body": { "mode": "raw", "raw": "{\n  \"event_id\": \"event-{{run_id}}\",\n  \"world_id\": \"world-mock\",\n  \"section_id\": \"section-mock\",\n  \"trigger_id\": \"trigger-mock\",\n  \"rooms\": [{ \"room_id\": \"room-mock\", \"type\": \"laboratory\" }],\n  \"resource_nodes\": [{ \"node_id\": \"event-node-{{run_id}}\", \"room_id\": \"room-mock\", \"resource_type\": \"wood\" }],\n  \"occurred_at\": \"2026-09-08T14:37:02Z\"\n}", "options": { "raw": { "language": "json" } } } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));"] } }]
+    },
+    {
+      "name": "20 Verify empty World node",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/resource-nodes/event-node-{{run_id}}" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));", "pm.test(\"placeholder economy\", () => { pm.expect(pm.response.json().quantity).to.eql(0); pm.expect(pm.response.json().max_capacity).to.eql(50); });"] } }]
+    },
+    {
+      "name": "21 Replace node stock",
+      "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/resource-nodes/node-{{run_id}}", "body": { "mode": "raw", "raw": "{\n  \"node_id\": \"node-{{run_id}}\",\n  \"resource_type\": \"metal\",\n  \"quantity\": 20,\n  \"max_capacity\": 50,\n  \"available\": true\n}", "options": { "raw": { "language": "json" } } } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"] } }]
+    },
+    {
+      "name": "22 Reject excess capacity",
+      "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/resource-nodes/node-{{run_id}}", "body": { "mode": "raw", "raw": "{\n  \"node_id\": \"node-{{run_id}}\",\n  \"resource_type\": \"metal\",\n  \"quantity\": 51,\n  \"max_capacity\": 50,\n  \"available\": true\n}", "options": { "raw": { "language": "json" } } } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 422\", () => pm.response.to.have.status(422));"] } }]
+    },
+    {
+      "name": "23 Delete node",
+      "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/api/resource-nodes/node-{{run_id}}" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));"] } }]
+    },
+    {
+      "name": "24 Deleted node missing",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/resource-nodes/node-{{run_id}}" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 404\", () => pm.response.to.have.status(404));"] } }]
+    },
+    {
+      "name": "25 Delete event node",
+      "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/api/resource-nodes/event-node-{{run_id}}" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));"] } }]
+    }
+  ]
+}
