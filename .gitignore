@@ -1,0 +1,7 @@
+# Secrets
+.env
+
+# IDE
+.vs/
+.vscode/
+.idea/
