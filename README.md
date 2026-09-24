@@ -1242,6 +1242,14 @@ Success Response (201 Created):
 
 Error Responses: `422 Unprocessable Entity` - invalid stats or unsupported ability.
 
+#### Update a Zombie Type
+
+`PUT /api/zombies/types/{zombie_type_id}` replaces the type's configuration using the same fields as creation, including the optional `active` flag (defaults to `true`). Returns `200 OK` with the updated type, `404 Not Found` for an unknown type, or `422 Unprocessable Entity` for invalid data.
+
+#### Delete a Zombie Type
+
+`DELETE /api/zombies/types/{zombie_type_id}` returns `204 No Content` on deletion or `404 Not Found` for an unknown type.
+
 #### Service Status
 
 `GET /api/status` Description: Health check.
@@ -1251,6 +1259,12 @@ Success Response (200 OK):
 ```json
 { "service": "zombie", "status": "ok", "uptime_seconds": 1234 }
 ```
+
+### Deployment and testing
+
+The shared Compose file runs `susanito88/zombie-service:1.0.0` at `http://localhost:8081` with its own PostgreSQL database and persistent volume. It sets `Database__ApplyMigrationsOnStartup: "true"`, so EF Core applies migrations before the API starts; no manual table creation is needed on a fresh database.
+
+Import the [Zombie Postman collection](collections/zombie-service/zombie-service.postman_collection.json) and run its requests in collection order. Its `baseUrl` defaults to `http://localhost:8081`; the collection generates identifiers for the run. It covers type CRUD and validation. Game Service still owns live zombie instances and spawning; these requests exercise the configuration API directly.
 
 ## Resource Service
 
@@ -1283,6 +1297,32 @@ Success Response (200 OK):
 	]
 }
 ```
+
+#### List Resource Nodes
+
+`GET /api/resource-nodes` returns `200 OK` with `count` and a `resource_nodes` array. The list includes unavailable nodes; fetching an unavailable node individually returns `404 Not Found`.
+
+#### Create and Update Resource Nodes
+
+`POST /api/resource-nodes` creates a node; `PUT /api/resource-nodes/{node_id}` updates one. Both accept:
+
+```json
+{
+    "node_id": "node-uuid-410",
+    "resource_type": "metal",
+    "quantity": 18,
+    "max_capacity": 50,
+    "available": true
+}
+```
+
+Supported resource types are `wood`, `metal`, `paper`, and `food`. Capacity must be positive and quantity must be between zero and capacity. For updates, `node_id` must match the URL.
+
+Creation returns `201 Created`; updates return `200 OK`, both with the node state. Invalid data returns `422 Unprocessable Entity`, duplicate creation returns `409 Conflict`, and updating an unknown node returns `404 Not Found`. These administrative endpoints prepare economy data for testing; World Service still owns physical node placement.
+
+#### Delete a Resource Node
+
+`DELETE /api/resource-nodes/{node_id}` returns `204 No Content` on deletion or `404 Not Found` for an unknown node.
 
 #### Get Resource Node State
 
@@ -1364,6 +1404,22 @@ Success Response (200 OK):
 
 Error Responses: `409 Conflict` - transaction already applied. `422 Unprocessable Entity` - insufficient resources.
 
+#### Receive a Section Unlocked Event
+
+`POST /api/events/section-unlocked` accepts the `section_unlocked` payload documented in [Events](#events). It validates the node-to-room references and creates the resource nodes in one database transaction. Success returns `200 OK`:
+
+```json
+{
+    "event_id": "event-uuid-703",
+    "applied": true,
+    "nodes_created": 1
+}
+```
+
+A previously applied `event_id` or an existing node ID returns `409 Conflict`; an invalid payload returns `422 Unprocessable Entity`. A failed operation does not partially create nodes. Because the event contract has no starting stock or capacity fields, new nodes currently use placeholder values of quantity `0` and capacity `50`.
+
+This HTTP endpoint is available for simulated World events through Postman. Automatic World-to-Resource delivery is not configured in the shared Compose file: `SECTION_UNLOCKED_SUBSCRIBERS` is currently empty.
+
 #### Service Status
 
 `GET /api/status` Description: Health check.
@@ -1373,6 +1429,12 @@ Success Response (200 OK):
 ```json
 { "service": "resource", "status": "ok", "uptime_seconds": 1234 }
 ```
+
+### Deployment and testing
+
+The shared Compose file runs `susanito88/resource-service:1.0.0` at `http://localhost:8082` with its own PostgreSQL database and persistent volume. It sets `Database__ApplyMigrationsOnStartup: "true"`, so EF Core applies migrations before the API starts; no manual table creation is needed on a fresh database.
+
+Import the [Resource Postman collection](collections/resource-service/resource-service.postman_collection.json) and run its requests in collection order. Its `baseUrl` defaults to `http://localhost:8082`; the collection generates identifiers for the run. It covers node CRUD, gathering, consumption, duplicate operations, validation, and simulated section-unlocked events. These calls simulate requests from peer services; they do not demonstrate full live integration with Game, Crafting, Base, or World. Player IDs are accepted without checking Player Service.
 
 ## Base Service
 
