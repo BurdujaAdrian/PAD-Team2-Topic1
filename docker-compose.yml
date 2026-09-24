@@ -1,8 +1,5 @@
 # Common deployment for PAD Team 2's services.
 # teammate's service is pulled as a prebuilt image from DockerHub.
-#
-# Currently wired in: base-service, crafting-service, zombie-service,
-# resource-service, exam-service, world-service.
 
 services:
     # ---------------------------------------------------------------------
@@ -153,6 +150,66 @@ services:
         restart: unless-stopped
         volumes:
             - game-data:/rqlite/file
+        ports:
+            - "127.0.0.1:4001:4001"   # HTTP API — only needed on the host for local debugging
+        healthcheck:
+            test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
+            interval: 3s
+            timeout: 2s
+            retries: 10
+            start_period: 5s
+
+    game-service:
+        image: adrianburduja/game-service:0.0.1
+        container_name: cpr-game-service
+        restart: unless-stopped
+        depends_on:
+            game-db:
+                condition: service_healthy
+        environment:
+            - DB_DSN=http://game-db:4001
+        ports:
+            - "8086:8080"
+
+    # ---------------------------------------------------------------------
+    # Player Service
+    # ---------------------------------------------------------------------
+    player-db:
+        image: rqlite/rqlite:latest
+        container_name: cpr-player-db
+        restart: unless-stopped
+        volumes:
+            - player-data:/rqlite/file
+        ports:
+            - "127.0.0.1:4002:4001"   # HTTP API — only needed on the host for local debugging
+        healthcheck:
+            test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
+            interval: 3s
+            timeout: 2s
+            retries: 10
+            start_period: 5s
+
+    player-service:
+        image: adrianburduja/player-service:0.0.1
+        container_name: cpr-player-service
+        restart: unless-stopped
+        depends_on:
+            player-db:
+                condition: service_healthy
+        environment:
+            - DB_DSN=http://player-db:4001
+        ports:
+            - "8081:8080"
+    # ---------------------------------------------------------------------
+    # TODO: Player Service, Game Service, Exam Service, World Service and
+    # their database containers will be added here once ready.
+    # ---------------------------------------------------------------------
+    game-db:
+        image: rqlite/rqlite:latest
+        container_name: cpr-game-db
+        restart: unless-stopped
+        volumes:
+            - game-data:/rqlite/file
         healthcheck:
             test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
             interval: 3s
@@ -273,9 +330,6 @@ services:
         environment:
             RQLITE_URL: http://${WORLD_RQLITE_USER}:${WORLD_RQLITE_PASSWORD}@world-db:4001
             SEED_ON_START: "true"
-            # section_unlocked goes to the Resource Service, which creates the
-            # economy entries for the new nodes, and to the Game Service, which
-            # invalidates its map cache. Wired once they expose endpoints.
             SECTION_UNLOCKED_SUBSCRIBERS: ""
         ports:
             - "8084:8080"
