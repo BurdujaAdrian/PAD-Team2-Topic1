@@ -1439,7 +1439,217 @@
       ]
     },
     {
-      "name": "9. Cleanup",
+      "name": "9. Event delivery",
+      "description": "The exam_passed event from the Exam Service, delivered over HTTP until the message broker lands. Status codes are chosen for a caller that retries: 2xx settles the event, 5xx asks for it again.",
+      "item": [
+        {
+          "name": "Deliver exam_passed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/exam-passed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "events",
+                "exam-passed"
+              ]
+            },
+            "description": "A passed exam arriving from the Exam Service. `attempt_id` is what the unlock path stores as its trigger, so the same event can be delivered again safely.\n\nReturns **202** when this delivery generated the section, **200** when the wing was already open.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"{{eventId}}\",\n  \"attempt_id\": \"{{triggerId}}\",\n  \"player_id\": \"player-1\",\n  \"course_id\": \"math_analysis\",\n  \"exam_type\": \"final\",\n  \"occurred_at\": \"2026-09-08T14:36:12Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A fresh trigger per run, so the folder stays re-runnable.",
+                  "const run = Date.now();",
+                  "pm.collectionVariables.set(\"triggerId\", \"attempt-\" + run);",
+                  "pm.collectionVariables.set(\"eventId\", \"event-\" + run);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 202, 200\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([202, 200]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Redeliver the same event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/exam-passed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "events",
+                "exam-passed"
+              ]
+            },
+            "description": "What a broker does after a timeout. The same `attempt_id` is answered with **200** and `already_applied`, and nothing is expanded a second time.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"{{eventId}}\",\n  \"attempt_id\": \"{{triggerId}}\",\n  \"player_id\": \"player-1\",\n  \"course_id\": \"math_analysis\",\n  \"exam_type\": \"final\",\n  \"occurred_at\": \"2026-09-08T14:36:12Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200]);",
+                  "});",
+                  "",
+                  "pm.test(\"reports it was already applied\", function () {",
+                  "    pm.expect(pm.response.json().outcome).to.eql(\"already_applied\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A course that expands nothing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/exam-passed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "events",
+                "exam-passed"
+              ]
+            },
+            "description": "Passing an exam that opens no wing is ordinary, so the event is acknowledged with **200** and `ignored` rather than rejected. Rejecting it would make a broker redeliver something that can never succeed.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"event-ignored\",\n  \"attempt_id\": \"attempt-ignored\",\n  \"player_id\": \"player-1\",\n  \"course_id\": \"underwater_basket_weaving\",\n  \"exam_type\": \"final\",\n  \"occurred_at\": \"2026-09-08T14:36:12Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200]);",
+                  "});",
+                  "",
+                  "pm.test(\"reports it was ignored\", function () {",
+                  "    pm.expect(pm.response.json().outcome).to.eql(\"ignored\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Malformed payload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/exam-passed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "events",
+                "exam-passed"
+              ]
+            },
+            "description": "**400**: the event is missing `attempt_id` and `course_id`, so there is nothing to apply.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"event-broken\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10. Cleanup",
       "description": "Removes what the CRUD folders created, so the collection can be run again.",
       "item": [
         {
@@ -1509,7 +1719,7 @@
       ]
     },
     {
-      "name": "10. Service",
+      "name": "11. Service",
       "description": "Health.",
       "item": [
         {
@@ -1604,6 +1814,16 @@
     },
     {
       "key": "tempSpawnPointId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "triggerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "eventId",
       "value": "",
       "type": "string"
     }
