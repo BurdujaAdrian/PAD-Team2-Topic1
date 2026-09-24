@@ -14,6 +14,82 @@ PAD Team 2's Common Public Repository
 
 ![PAD architecture](docs/images/diagram.png)
 
+## Running the Stack
+
+Everything runs from the Compose file in this repository. It pulls prebuilt
+images from Docker Hub rather than building from the submodules, so no service
+source is needed to bring the system up.
+
+### Requirements
+
+Docker with Compose v2. Nothing else.
+
+### Setting up the environment
+
+The Compose file reads every credential from the environment, so none of them
+live in the repository. Copy the templates and fill them in:
+
+```bash
+cp .env.example .env
+```
+
+The Exam and World services are backed by rqlite, which reads its users from a
+JSON file rather than environment variables, so those need one more step:
+
+```bash
+cp secrets/exam-rqlite-users.example.json  secrets/exam-rqlite-users.json
+cp secrets/world-rqlite-users.example.json secrets/world-rqlite-users.json
+```
+
+Replace every `REPLACE_ME` and `change_me` with values of your own. The rqlite
+usernames and passwords have to match between the JSON files and `.env`: the
+file is what the database accepts, and `.env` is what the service sends. See
+[`secrets/README.md`](secrets/README.md).
+
+Neither `.env` nor `secrets/*.json` is tracked; only the templates are.
+
+### Starting it
+
+```bash
+docker compose up -d
+```
+
+Databases come up first and the services wait for them: every database declares
+a health check, and every service `depends_on` it with `condition:
+service_healthy`, so nothing starts talking to a database that is not ready yet.
+
+```bash
+docker compose ps       # what is up, and whether it is healthy
+docker compose logs -f  # follow everything
+docker compose down     # stop, keeping the data
+docker compose down -v  # stop and delete the data as well
+```
+
+### Where the services listen
+
+| Service | URL | Owner |
+| ------- | --- | ----- |
+| Base | <http://localhost:5076> | Vornicescu Ion |
+| Crafting | <http://localhost:5198> | Vornicescu Ion |
+| Zombie | <http://localhost:8081> | Magla Alexandru |
+| Resource | <http://localhost:8082> | Magla Alexandru |
+| Exam | <http://localhost:8083> | Gurschi Gheorghe |
+| World | <http://localhost:8084> | Gurschi Gheorghe |
+
+Each exposes `GET /api/status` as a health check. The database ports are bound
+to `127.0.0.1` only, so they are reachable for debugging but not from the
+network.
+
+### Testing it
+
+The Postman collections in [`collections/`](collections/) target these ports.
+From the terminal:
+
+```bash
+npx newman run collections/exam-service/exam-service.postman_collection.json \
+  -e collections/exam-service/exam-service.local.postman_environment.json
+```
+
 # Service Boundaries
 
 ## Player Service
