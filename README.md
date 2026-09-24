@@ -33,29 +33,12 @@ live in the repository. Copy the templates and fill them in:
 cp .env.example .env
 ```
 
-The Exam and World services are backed by rqlite, which reads its users from a
-JSON file rather than environment variables, so those need one more step:
+Replace every `change_me` with a value of your own. `.env` is not tracked; only
+the template is.
 
-```bash
-cp secrets/exam-rqlite-users.example.json  secrets/exam-rqlite-users.json
-cp secrets/world-rqlite-users.example.json secrets/world-rqlite-users.json
-```
-
-Replace every `REPLACE_ME` and `change_me` with values of your own. The rqlite
-usernames and passwords have to match between the JSON files and `.env`: the
-file is what the database accepts, and `.env` is what the service sends. See
-[`secrets/README.md`](secrets/README.md).
-
-Neither `.env` nor `secrets/*.json` is tracked; only the templates are. Skipping
-this step is the most common way a fresh clone fails to start:
-
-```
-Error response from daemon: invalid mount config for type "bind":
-bind source path does not exist: .../secrets/exam-rqlite-users.json
-```
-
-That message names the file it wants. Copy the template, fill it in, and run
-`docker compose up -d` again.
+The Exam and World databases need nothing here: their rqlite instances are
+bound to `127.0.0.1` and reachable only from inside the Compose network, so
+they run without credentials.
 
 ### Starting it
 
