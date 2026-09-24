@@ -812,6 +812,50 @@ Success Response (200 OK):
 }
 ```
 
+#### Cancel an Exam Attempt
+
+`DELETE /api/exams/attempts/{attempt_id}` Description: Cancels an attempt that is still in progress, for when the encounter ends before the player finishes. A cancelled attempt does not count against the course's attempt limit.
+
+Success Response (204 No Content): no body.
+
+Error Responses: `404 Not Found` — unknown attempt. `409 Conflict` — the attempt was already submitted.
+
+#### Service Status
+
+`GET /api/status` Description: Health check. Used by the other services and by the Compose health check.
+
+Success Response (200 OK):
+
+```json
+{ "service": "exam", "status": "ok", "uptime_seconds": 1234 }
+```
+
+#### Endpoint Index
+
+`GET /api` Description: Lists every endpoint the service serves, grouped, with a one-line summary each. The index is generated from the same table the routes are registered from, so it cannot drift from what the service does. The root path redirects here.
+
+Success Response (200 OK):
+
+```json
+{
+	"service": "exam",
+	"description": "Owns exam definitions, the question bank, attempts, scores, academic progress and achievements.",
+	"repository": "https://github.com/Gheorghe2973/exam-service",
+	"groups": [
+		{
+			"group": "Exam attempts",
+			"endpoints": [
+				{ "method": "POST", "path": "/api/exams/attempts", "summary": "Start an attempt, idempotent by encounter_id" }
+			]
+		}
+	]
+}
+```
+
+#### Administrative Endpoints
+
+The service also exposes CRUD over the data it owns: courses (`/api/courses`), the question bank (`/api/courses/{course_id}/questions` and `/api/questions/{question_id}`) and the achievement catalogue (`/api/achievements`). No other service calls these — they exist to seed and maintain the exam content — so they are listed at `GET /api` rather than spelled out here.
+
 ## World Service
 
 Owns the persistent campus map, room types, resource node placement, zombie spawn
@@ -979,6 +1023,38 @@ Success Response (201 Created):
 
 Success Response (200 OK): the section was already unlocked, `already_unlocked` is `true`.
 
+#### Consume `exam_passed`
+
+`POST /api/events/exam-passed` Description: Delivery endpoint for the Exam Service's `exam_passed` event. It stands in for the broker subscription until one exists, and takes the event payload documented under [Events](#events) unchanged.
+
+The event names no world, because which campus a passed exam expands is the World Service's decision rather than the Exam Service's. `DEFAULT_WORLD_ID` picks it.
+
+Applying it is idempotent by `attempt_id`, which is stored as the unlock trigger, so a redelivered event expands nothing a second time.
+
+Success Response (202 Accepted): this delivery generated the section.
+
+```json
+{
+	"event_id": "event-uuid-701",
+	"attempt_id": "attempt-uuid-001",
+	"world_id": "world-uuid-100",
+	"outcome": "unlocked",
+	"section_id": "section-uuid-302"
+}
+```
+
+Success Response (200 OK): `outcome` is `already_applied` when the trigger had been seen before, or `ignored` when the course expands no section. Both acknowledge the event — passing an exam that opens no wing is ordinary, and rejecting it would make a publisher redeliver something that can never succeed.
+
+Error Responses: `400 Bad Request` — the payload is missing `attempt_id` or `course_id`, so it can never apply. `5xx` — something transient failed and redelivering is worth it.
+
+#### Endpoint Index
+
+`GET /api` Description: Lists every endpoint the service serves, grouped, with a one-line summary each. Generated from the same table the routes are registered from, so it cannot drift from what the service does. The root path redirects here.
+
+#### Administrative Endpoints
+
+The service also exposes CRUD over the map it owns: worlds (`/api/worlds`), sections (`/api/worlds/{world_id}/sections` and `/api/sections/{section_id}`), rooms, resource nodes and spawn points. No other service calls these — they exist to author and maintain the campus — so they are listed at `GET /api` rather than spelled out here.
+
 #### Service Status
 
 `GET /api/status` Description: Health check.
@@ -992,6 +1068,39 @@ Success Response (200 OK):
 ---
 
 ## Events
+
+### How they travel today
+
+Until the message broker lands, the events below are delivered over HTTP: the
+publisher POSTs the payload to whoever subscribed to the topic, and the
+subscribers are configured rather than discovered. The payloads and the
+idempotency keys are already the agreed ones, so introducing a broker later
+changes the transport and nothing else.
+
+| Topic | Published by | Consumed by | Delivery endpoint |
+| ----- | ------------ | ----------- | ----------------- |
+| `exam_passed` | Exam Service | World Service | `POST /api/events/exam-passed` |
+| `achievement_unlocked` | Exam Service | Player Service | not wired yet |
+| `section_unlocked` | World Service | Resource Service, Game Service | not wired yet |
+
+Subscribers are set per topic through the environment, as a comma-separated
+list of URLs, so a topic can reach several services:
+
+| Service | Variable |
+| ------- | -------- |
+| Exam | `EXAM_PASSED_SUBSCRIBERS`, `ACHIEVEMENT_UNLOCKED_SUBSCRIBERS` |
+| World | `SECTION_UNLOCKED_SUBSCRIBERS` |
+
+A topic with no subscribers is logged and dropped, so a service runs on its own
+while the others are being built. Publishing never blocks the response that
+caused it: a submitted exam returns its score immediately and the events go out
+behind it.
+
+One difference from a real broker is worth stating plainly. Delivery here is
+best-effort: a consumer that is down means the event is lost, where a broker
+would hold it and retry. What is already in place is the part that makes the
+retry safe when it arrives — every event carries a key its consumer deduplicates
+by, so the same event can be delivered twice without a second effect.
 
 #### `exam_passed`
 
