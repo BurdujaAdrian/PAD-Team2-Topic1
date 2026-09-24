@@ -5,7 +5,7 @@ PAD Team 2's Common Public Repository
 
 | Name             | Services                         | Language | Database   |
 | ---------------- | -------------------------------- | -------- | ---------- |
-| Burduja Adrian   | Player Service, Game Service     | Go       | SQLite     |
+| Burduja Adrian   | Player Service, Game Service     | Go       | RQLite     |
 | Gurschi Gheorghe | Exam Service, World Service      | Go       | rqlite     |
 | Vornicescu Ion   | Base Service, Crafting Service   | C#       | PostgreSQL |
 | Magla Alexandru  | Zombie Service, Resource Service | C#       | PostgreSQL |
@@ -1497,19 +1497,22 @@ Success Response (200 OK):
 
 \+ Goroutines enable small but frequent updates to the state in an concurrent context. Satisfies updating players Progression via calls from various services.
 
-\+ Has battle tested libraries for working with Sqlite. Satisfies the requirement of having persistent storage for player's information.
+\+ Has battle tested libraries for working with SQL. Satisfies the requirement of having persistent storage for player's information.
 
 \- Does not provide automatic/guaranteed protections against data races. Dissatisfies the CRUD heavy nature of the service.
 
-### Sqlite:
+### rqlite:
 
-\+ Zero-config, serverless engine. No separate database process to run or coordinate in the Player Service's Docker image, keeping deployment simple.
+\+ Raft-replicated cluster — the database survives a node going down, giving horizontal fault-tolerance that a single embedded database can't.
 
-\+ Relational model with joins fits Player Service's data shape directly. Player <-> friends <-> inventory <-> trades relationships are very well modeled by SQL.
+\+ SQL/relational model with full ACID transactions. The join-heavy player↔friends↔inventory↔trades shape and the atomic trade requirement both map directly onto standard SQL.
 
-\+ ACID transactions give the atomic trade requirement a built-in mechanism. Perform the updates in one transaction rather than building atomicity by hand.
+\+ HTTP API — no database driver or C library dependency, just standard HTTP calls from Go.
 
-\- Single-writer lock: writes serialize regardless of how many goroutines are handling requests concurrently. The progression endpoint gets called frequently by Game, Exam and Crafting Service under load, those writes queue up despite the app-layer concurrency.
+\- Writes funnel through a single Raft leader node — serialized, with a network/consensus round-trip added on every write.
+
+\- As deployed (one rqlite container per service, no replica nodes), the cluster has no quorum to fail over to. All of the network/consensus overhead is paid on every write without the fault-tolerance benefit being realized.
+
 
 ## Game Service
 
@@ -1525,15 +1528,15 @@ Success Response (200 OK):
 
 \- Goroutines/timers tied to a session must be explicitly cancelled (`context.Context`) on disconnect or session end. Risks leaking goroutines.
 
-### Sqlite:
+### rqlite:
 
-\+ ACID transactions matter for anything Game Service needs to persist across restarts. Enables recovering in-progress session/timer state after a crash, or writing a finished session's outcome to history.
+\+ Cluster-level durability for session history and results that must survive a restart.
 
-\+ Zero-config, serverless. Same deployment as the rest of the stack.
+\+ HTTP API, no CGO or driver dependency.
 
-\- Single-writer lock. If the workload becomes too big this can become a bottleneck.
+\- Every write that does hit rqlite still costs a network round-trip and Raft commit before it's acknowledged. Since only the genuinely durable data (session history, results) goes through it, this cost is paid rarely rather than on every action — but it's still real overhead on the writes that do occur, compared to a local write.
 
-\- Most of what Game Service holds (active session/timer state) is short-lived. Only the state that truly needs to persist even after shutdowns of the system need to be stored(session history, lobbies, results, etc. ).
+\- Same single-node problem as Player Service: no quorum means no actual fail-over benefit is being realized from the replication model.
 
 ## Exam Service
 
