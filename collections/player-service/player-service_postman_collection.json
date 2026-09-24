@@ -1,0 +1,1446 @@
+{
+    "info": {
+        "_postman_id": "5f2b8a3e-7c14-4a9d-9e2f-3d6b1c8a90f1",
+        "name": "Player Service",
+        "description": "Test collection for the Player Service (`services/player-service`).\n\nRun the folders top to bottom (or use the Collection Runner). **Players > Register Player A/B** create two fresh players and store their ids/usernames as collection variables that later requests use; **Cleanup** deletes them.\n\nVariable `baseUrl` defaults to `http://localhost:8080`.\n\nCovers `/api/players`, `/api/players/{player_id}/friends/*`, `/api/players/{player_id}/presence`, `/api/players/{player_id}/inventory/*`, `/api/players/{player_id}/progression-events` and `/api/trades/*`.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Players",
+            "description": "Registration, login, profile read/update.",
+            "item": [
+                {
+                    "name": "Register Player A",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set(\"playerAUsername\", \"collection_test_\" + pm.variables.replaceIn(\"{{$guid}}\"));"
+                                ]
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"response has player_id and matching username\", () => {",
+                                    "    pm.expect(body.player_id).to.be.a(\"string\").and.not.empty;",
+                                    "    pm.expect(body.username).to.eql(pm.collectionVariables.get(\"playerAUsername\"));",
+                                    "});",
+                                    "pm.collectionVariables.set(\"playerAId\", body.player_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players"
+                            ]
+                        },
+                        "description": "Creates the first test player. Stores playerAId and playerAUsername for every request after this one.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"{{playerAUsername}}\",\n    \"email\": \"{{playerAUsername}}@test.dev\",\n    \"password\": \"hunter2\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Register Player B",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set(\"playerBUsername\", \"collection_test_\" + pm.variables.replaceIn(\"{{$guid}}\"));"
+                                ]
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"response has player_id and matching username\", () => {",
+                                    "    pm.expect(body.player_id).to.be.a(\"string\").and.not.empty;",
+                                    "    pm.expect(body.username).to.eql(pm.collectionVariables.get(\"playerBUsername\"));",
+                                    "});",
+                                    "pm.collectionVariables.set(\"playerBId\", body.player_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players"
+                            ]
+                        },
+                        "description": "Creates the second test player, used as the friend/trade counterpart. Stores playerBId and playerBUsername.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"{{playerBUsername}}\",\n    \"email\": \"{{playerBUsername}}@test.dev\",\n    \"password\": \"hunter2\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Login",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"player_id matches the registered player\", () => {",
+                                    "    pm.expect(body.player_id).to.eql(pm.collectionVariables.get(\"playerAId\"));",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/login",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "login"
+                            ]
+                        },
+                        "description": "Authenticates Player A.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"{{playerAUsername}}\",\n    \"password\": \"hunter2\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Get Player Profile",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"profile matches the registered player and default progression\", () => {",
+                                    "    pm.expect(body.player_id).to.eql(pm.collectionVariables.get(\"playerAId\"));",
+                                    "    pm.expect(body.username).to.eql(pm.collectionVariables.get(\"playerAUsername\"));",
+                                    "    pm.expect(body.xp).to.eql(0);",
+                                    "    pm.expect(body.level).to.eql(1);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}"
+                            ]
+                        },
+                        "description": "Fetches Player A's profile. Confirms defaults for a freshly registered player."
+                    }
+                },
+                {
+                    "name": "Update Player Profile",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"avatar was updated\", () => {",
+                                    "    pm.expect(body.avatar).to.eql(\"avatar-test-1\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}"
+                            ]
+                        },
+                        "description": "Updates Player A's username and avatar.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"{{playerAUsername}}_updated\",\n    \"avatar\": \"avatar-test-1\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Friends",
+            "description": "Friend requests, friendship status and the friend list. Run after Players.",
+            "item": [
+                {
+                    "name": "Get Friendship Status - None",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"relationship is none\", () => pm.expect(pm.response.json().status).to.eql(\"none\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}/friends/{{playerBId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}",
+                                "friends",
+                                "{{playerBId}}"
+                            ]
+                        },
+                        "description": "No relationship exists yet between A and B."
+                    }
+                },
+                {
+                    "name": "Send Friend Request",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"request is pending\", () => pm.expect(body.status).to.eql(\"pending\"));",
+                                    "pm.collectionVariables.set(\"friendRequestId\", body.request_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}/friends/requests",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}",
+                                "friends",
+                                "requests"
+                            ]
+                        },
+                        "description": "Player A sends a friend request to Player B. Stores friendRequestId.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"target_player_id\": \"{{playerBId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "List Incoming Friend Requests",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"includes the request from Player A\", () => {",
+                                    "    const match = body.items.find(i => i.request_id === pm.collectionVariables.get(\"friendRequestId\"));",
+                                    "    pm.expect(match).to.not.be.undefined;",
+                                    "    pm.expect(match.from_player_id).to.eql(pm.collectionVariables.get(\"playerAId\"));",
+                                    "    pm.expect(match.status).to.eql(\"pending\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerBId}}/friends/requests",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerBId}}",
+                                "friends",
+                                "requests"
+                            ]
+                        },
+                        "description": "Player B should see the pending request from Player A."
+                    }
+                },
+                {
+                    "name": "Get Friendship Status - Pending Outgoing",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"relationship is pending_outgoing\", () => pm.expect(body.status).to.eql(\"pending_outgoing\"));",
+                                    "pm.test(\"request_id matches\", () => pm.expect(body.request_id).to.eql(pm.collectionVariables.get(\"friendRequestId\")));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}/friends/{{playerBId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}",
+                                "friends",
+                                "{{playerBId}}"
+                            ]
+                        },
+                        "description": "From A's side the request is outgoing and pending."
+                    }
+                },
+                {
+                    "name": "Accept Friend Request",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"request is accepted\", () => pm.expect(pm.response.json().status).to.eql(\"accepted\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerBId}}/friends/requests/{{friendRequestId}}/accept",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerBId}}",
+                                "friends",
+                                "requests",
+                                "{{friendRequestId}}",
+                                "accept"
+                            ]
+                        },
+                        "description": "Player B accepts the pending request."
+                    }
+                },
+                {
+                    "name": "Get Friendship Status - Friends",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"relationship is friends\", () => pm.expect(pm.response.json().status).to.eql(\"friends\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}/friends/{{playerBId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}",
+                                "friends",
+                                "{{playerBId}}"
+                            ]
+                        },
+                        "description": "After acceptance both players should show as friends."
+                    }
+                },
+                {
+                    "name": "List Friends",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"friends list includes Player B\", () => {",
+                                    "    const ids = body.friends.map(f => f.player_id);",
+                                    "    pm.expect(ids).to.include(pm.collectionVariables.get(\"playerBId\"));",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}/friends",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}",
+                                "friends"
+                            ]
+                        },
+                        "description": "Player B should now appear in Player A's friend list."
+                    }
+                },
+                {
+                    "name": "Remove Friend",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));",
+                                    "pm.test(\"response has no body\", () => pm.expect(pm.response.text()).to.be.empty);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}/friends/{{playerBId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}",
+                                "friends",
+                                "{{playerBId}}"
+                            ]
+                        },
+                        "description": "Removes the friendship."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Presence",
+            "description": "Online status updates.",
+            "item": [
+                {
+                    "name": "Update Presence",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"online_status was updated\", () => pm.expect(pm.response.json().online_status).to.eql(\"in-session\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}/presence",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}",
+                                "presence"
+                            ]
+                        },
+                        "description": "Updates Player A's online status.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"status\": \"in-session\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Inventory",
+            "description": "Granting items and reading a player's inventory. Run after Players.",
+            "item": [
+                {
+                    "name": "Grant Item to Player A",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set(\"itemAGrantEventId\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                                ]
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"quantity is 2\", () => pm.expect(body.quantity).to.eql(2));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}/inventory/items",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}",
+                                "inventory",
+                                "items"
+                            ]
+                        },
+                        "description": "Grants 2x itemAId to Player A. Stores itemAGrantEventId in the prerequest script so the retry below reuses it.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"item_id\": \"{{itemAId}}\",\n    \"quantity\": 2,\n    \"event_id\": \"{{itemAGrantEventId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Grant Item to Player A - Idempotent Retry",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"quantity is still 2, not compounded\", () => pm.expect(pm.response.json().quantity).to.eql(2));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}/inventory/items",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}",
+                                "inventory",
+                                "items"
+                            ]
+                        },
+                        "description": "Resends the exact same event_id. Quantity must not compound to 4.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"item_id\": \"{{itemAId}}\",\n    \"quantity\": 2,\n    \"event_id\": \"{{itemAGrantEventId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Get Inventory",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"includes the granted item with quantity 2\", () => {",
+                                    "    const item = body.items.find(i => i.item_id === pm.collectionVariables.get(\"itemAId\"));",
+                                    "    pm.expect(item).to.not.be.undefined;",
+                                    "    pm.expect(item.quantity).to.eql(2);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}/inventory",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}",
+                                "inventory"
+                            ]
+                        },
+                        "description": "Confirms the granted item shows up with the correct quantity."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Progression",
+            "description": "XP submission and its idempotency guarantee. Run after Players.",
+            "item": [
+                {
+                    "name": "Submit Progression Event",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set(\"progressionEventId\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                                ]
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"xp increased by 150 from the fresh player\", () => pm.expect(body.xp).to.eql(150));",
+                                    "pm.collectionVariables.set(\"xpAfterFirst\", body.xp);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}/progression-events",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}",
+                                "progression-events"
+                            ]
+                        },
+                        "description": "Awards 150 XP to Player A. Stores progressionEventId for the retry below and xpAfterFirst for comparison.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"xp_delta\": 150,\n    \"reason\": \"test_event\",\n    \"event_id\": \"{{progressionEventId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Submit Progression Event - Idempotent Retry",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"xp is unchanged from the first submission\", () => {",
+                                    "    pm.expect(body.xp).to.eql(Number(pm.collectionVariables.get(\"xpAfterFirst\")));",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}/progression-events",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}",
+                                "progression-events"
+                            ]
+                        },
+                        "description": "Resends the exact same event_id. XP must not compound to 300.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"xp_delta\": 150,\n    \"reason\": \"test_event\",\n    \"event_id\": \"{{progressionEventId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Trades",
+            "description": "Proposing, accepting, declining trades, and the ownership-conflict path. Run after Inventory.",
+            "item": [
+                {
+                    "name": "Grant Item to Player B",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set(\"itemBGrantEventId\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                                ]
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"quantity is 1\", () => pm.expect(pm.response.json().quantity).to.eql(1));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerBId}}/inventory/items",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerBId}}",
+                                "inventory",
+                                "items"
+                            ]
+                        },
+                        "description": "Setup for the trade tests below - Player B needs something to trade back.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"item_id\": \"{{itemBId}}\",\n    \"quantity\": 1,\n    \"event_id\": \"{{itemBGrantEventId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Propose Trade",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"trade is pending\", () => pm.expect(body.status).to.eql(\"pending\"));",
+                                    "pm.collectionVariables.set(\"tradeId\", body.trade_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/trades",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "trades"
+                            ]
+                        },
+                        "description": "Player A offers itemAId for Player B's itemBId. Stores tradeId.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"from_player_id\": \"{{playerAId}}\",\n    \"to_player_id\": \"{{playerBId}}\",\n    \"offered_item_ids\": [\n        \"{{itemAId}}\"\n    ],\n    \"requested_item_ids\": [\n        \"{{itemBId}}\"\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Accept Trade",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"trade is completed\", () => pm.expect(pm.response.json().status).to.eql(\"completed\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/trades/{{tradeId}}/accept",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "trades",
+                                "{{tradeId}}",
+                                "accept"
+                            ]
+                        },
+                        "description": "Player B accepts - ownership is verified and the items swap atomically."
+                    }
+                },
+                {
+                    "name": "Get Trade - After Accept",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"status is completed and items match what was proposed\", () => {",
+                                    "    pm.expect(body.status).to.eql(\"completed\");",
+                                    "    pm.expect(body.offered_item_ids).to.eql([pm.collectionVariables.get(\"itemAId\")]);",
+                                    "    pm.expect(body.requested_item_ids).to.eql([pm.collectionVariables.get(\"itemBId\")]);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/trades/{{tradeId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "trades",
+                                "{{tradeId}}"
+                            ]
+                        },
+                        "description": "Confirms the trade record reflects completion."
+                    }
+                },
+                {
+                    "name": "Propose Trade - For Decline",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set(\"tradeId2\", pm.response.json().trade_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/trades",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "trades"
+                            ]
+                        },
+                        "description": "A second trade, proposed only to be declined below. Items have swapped owners since the first trade completed. Stores tradeId2.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"from_player_id\": \"{{playerBId}}\",\n    \"to_player_id\": \"{{playerAId}}\",\n    \"offered_item_ids\": [\n        \"{{itemBId}}\"\n    ],\n    \"requested_item_ids\": [\n        \"{{itemAId}}\"\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Decline Trade",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"trade is declined\", () => pm.expect(pm.response.json().status).to.eql(\"declined\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/trades/{{tradeId2}}/decline",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "trades",
+                                "{{tradeId2}}",
+                                "decline"
+                            ]
+                        },
+                        "description": "Cancels the second trade offer."
+                    }
+                },
+                {
+                    "name": "Propose Trade - Item Not Owned",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "pm.test(\"proposing a trade does not itself validate ownership\", () => {",
+                                    "    pm.expect(pm.response.json().status).to.eql(\"pending\");",
+                                    "});",
+                                    "pm.collectionVariables.set(\"tradeConflictId\", pm.response.json().trade_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/trades",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "trades"
+                            ]
+                        },
+                        "description": "Player A offers an item they never owned. Used to trigger the 409 ownership conflict below. Stores tradeConflictId.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"from_player_id\": \"{{playerAId}}\",\n    \"to_player_id\": \"{{playerBId}}\",\n    \"offered_item_ids\": [\n        \"item-does-not-exist\"\n    ],\n    \"requested_item_ids\": [\n        \"{{itemBId}}\"\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Accept Trade - Ownership Conflict (409)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 409 Conflict\", () => pm.response.to.have.status(409));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/trades/{{tradeConflictId}}/accept",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "trades",
+                                "{{tradeConflictId}}",
+                                "accept"
+                            ]
+                        },
+                        "description": "Ownership is re-verified at accept time, not at proposal time - this must fail."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Errors",
+            "description": "Not-found paths for id-based lookups.",
+            "item": [
+                {
+                    "name": "Get Player Profile - Unknown Id (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 404 Not Found\", () => pm.response.to.have.status(404));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{$guid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{$guid}}"
+                            ]
+                        },
+                        "description": "A well-formed but unknown player id."
+                    }
+                },
+                {
+                    "name": "Get Trade - Unknown Id (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 404 Not Found\", () => pm.response.to.have.status(404));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/trades/{{$guid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "trades",
+                                "{{$guid}}"
+                            ]
+                        },
+                        "description": "A well-formed but unknown trade id."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Cleanup",
+            "description": "Deletes the players created by this run. Keep this folder last.",
+            "item": [
+                {
+                    "name": "Delete Player A",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));",
+                                    "pm.test(\"response has no body\", () => pm.expect(pm.response.text()).to.be.empty);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}"
+                            ]
+                        },
+                        "description": "Deletes the first test player."
+                    }
+                },
+                {
+                    "name": "Delete Player B",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));",
+                                    "pm.test(\"response has no body\", () => pm.expect(pm.response.text()).to.be.empty);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerBId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerBId}}"
+                            ]
+                        },
+                        "description": "Deletes the second test player."
+                    }
+                },
+                {
+                    "name": "Get Player Profile - After Delete (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 404 Not Found\", () => pm.response.to.have.status(404));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerAId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerAId}}"
+                            ]
+                        },
+                        "description": "Confirms Player A is gone."
+                    }
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:8080",
+            "type": "string"
+        },
+        {
+            "key": "playerAUsername",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "playerAId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "playerBUsername",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "playerBId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "friendRequestId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "itemAId",
+            "value": "item-test-sword",
+            "type": "string"
+        },
+        {
+            "key": "itemBId",
+            "value": "item-test-shield",
+            "type": "string"
+        },
+        {
+            "key": "tradeId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "tradeId2",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "tradeConflictId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "itemAGrantEventId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "itemBGrantEventId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "progressionEventId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "xpAfterFirst",
+            "value": "",
+            "type": "string"
+        }
+    ]
+}

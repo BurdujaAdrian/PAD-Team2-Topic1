@@ -1,0 +1,1088 @@
+{
+    "info": {
+        "_postman_id": "9d3b6c1a-4e21-4f0d-9a72-1b6e2f9c8a44",
+        "name": "Crafting Service",
+        "description": "Test collection for the Crafting Service (`services/crafting-service`).\n\nRun the folders top to bottom (or use the Collection Runner). **Recipes > Create Recipe** and **Create Second Recipe** create two fresh recipes and store their ids/names as collection variables that the later requests use; **Cleanup** deletes them.\n\nVariable `baseUrl` defaults to `http://localhost:5198` (the `dotnet run` / Docker port).\n\nOnly implemented endpoints are covered (`/api/status` and `/api/recipes` CRUD). `POST /api/crafting/craft` and `GET /api/players/{player_id}/recipes/available` are documented in the service README as planned but not yet implemented.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Status",
+            "description": "Health check.",
+            "item": [
+                {
+                    "name": "Service Status",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"service is crafting and status is ok\", () => {",
+                                    "    pm.expect(body.service).to.eql(\"crafting\");",
+                                    "    pm.expect(body.status).to.eql(\"ok\");",
+                                    "});",
+                                    "pm.test(\"uptime_seconds is a non-negative number\", () => {",
+                                    "    pm.expect(body.uptime_seconds).to.be.a(\"number\");",
+                                    "    pm.expect(body.uptime_seconds).to.be.at.least(0);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/status",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "status"
+                            ]
+                        },
+                        "description": "Health check. Returns the service name, `ok` status and uptime in seconds."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Recipes",
+            "description": "Full CRUD over recipe definitions. Run the requests in order: Create Recipe and Create Second Recipe store `recipeId`/`recipeName` and `secondaryRecipeId`/`secondaryRecipeName` as collection variables for every request after them.",
+            "item": [
+                {
+                    "name": "Create Recipe",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set(\"recipeName\", \"collection_test_\" + pm.variables.replaceIn(\"{{$guid}}\"));"
+                                ]
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"Location header points to the new recipe\", () => {",
+                                    "    pm.expect(pm.response.headers.get(\"Location\")).to.include(body.recipe_id);",
+                                    "});",
+                                    "pm.test(\"recipe has the requested name and output\", () => {",
+                                    "    pm.expect(body.name).to.eql(pm.collectionVariables.get(\"recipeName\"));",
+                                    "    pm.expect(body.output).to.eql({ item: pm.collectionVariables.get(\"recipeName\") + \"_item\", quantity: 1 });",
+                                    "});",
+                                    "pm.test(\"inputs match what was submitted\", () => {",
+                                    "    pm.expect(body.inputs).to.eql([",
+                                    "        { resource: \"wood\", amount: 10 },",
+                                    "        { resource: \"metal_scraps\", amount: 5 }",
+                                    "    ]);",
+                                    "});",
+                                    "pm.test(\"unlock_condition defaults extra fields to null when type is none\", () => {",
+                                    "    pm.expect(body.unlock_condition).to.eql({ type: \"none\", course_id: null, level: null });",
+                                    "});",
+                                    "pm.test(\"response has the expected fields\", () => {",
+                                    "    pm.expect(body).to.have.all.keys(\"recipe_id\", \"name\", \"inputs\", \"output\", \"unlock_condition\");",
+                                    "});",
+                                    "pm.collectionVariables.set(\"recipeId\", body.recipe_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "Registers a new recipe with an explicit `none` unlock condition. Saves `recipeId` and `recipeName` for the following requests.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"{{recipeName}}\",\n    \"inputs\": [\n        { \"resource\": \"wood\", \"amount\": 10 },\n        { \"resource\": \"metal_scraps\", \"amount\": 5 }\n    ],\n    \"output\": { \"item\": \"{{recipeName}}_item\", \"quantity\": 1 },\n    \"unlock_condition\": { \"type\": \"none\" }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Second Recipe",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set(\"secondaryRecipeName\", \"collection_test_\" + pm.variables.replaceIn(\"{{$guid}}\"));"
+                                ]
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"recipe has the requested name\", () => {",
+                                    "    pm.expect(body.name).to.eql(pm.collectionVariables.get(\"secondaryRecipeName\"));",
+                                    "});",
+                                    "pm.test(\"unlock_condition defaults to none when omitted from the request\", () => {",
+                                    "    pm.expect(body.unlock_condition).to.eql({ type: \"none\", course_id: null, level: null });",
+                                    "});",
+                                    "pm.collectionVariables.set(\"secondaryRecipeId\", body.recipe_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "Registers a second recipe with `unlock_condition` omitted entirely, to confirm it defaults to `none`. Saves `secondaryRecipeId` and `secondaryRecipeName`, used later to test name-conflict responses without disturbing the primary recipe.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"{{secondaryRecipeName}}\",\n    \"inputs\": [\n        { \"resource\": \"paper\", \"amount\": 5 }\n    ],\n    \"output\": { \"item\": \"{{secondaryRecipeName}}_item\", \"quantity\": 1 }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Get Recipe Detail",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"returns the created recipe\", () => {",
+                                    "    pm.expect(body.recipe_id).to.eql(pm.collectionVariables.get(\"recipeId\"));",
+                                    "    pm.expect(body.name).to.eql(pm.collectionVariables.get(\"recipeName\"));",
+                                    "});",
+                                    "pm.test(\"inputs and output are present\", () => {",
+                                    "    pm.expect(body.inputs).to.be.an(\"array\").that.is.not.empty;",
+                                    "    pm.expect(body.output.item).to.eql(pm.collectionVariables.get(\"recipeName\") + \"_item\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes/{{recipeId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes",
+                                "{{recipeId}}"
+                            ]
+                        },
+                        "description": "Returns the full detail of the recipe created by **Create Recipe**, including its unlock condition."
+                    }
+                },
+                {
+                    "name": "List Recipes",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"recipes is an array\", () => pm.expect(body.recipes).to.be.an(\"array\"));",
+                                    "pm.test(\"catalogue includes both recipes created by this run\", () => {",
+                                    "    const ids = body.recipes.map((r) => r.recipe_id);",
+                                    "    pm.expect(ids).to.include(pm.collectionVariables.get(\"recipeId\"));",
+                                    "    pm.expect(ids).to.include(pm.collectionVariables.get(\"secondaryRecipeId\"));",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "Returns every registered recipe, ordered by name. This is the catalogue-wide list."
+                    }
+                },
+                {
+                    "name": "Update Recipe",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"name is unchanged (not part of this update)\", () => {",
+                                    "    pm.expect(body.name).to.eql(pm.collectionVariables.get(\"recipeName\"));",
+                                    "});",
+                                    "pm.test(\"inputs were replaced with the new list\", () => {",
+                                    "    pm.expect(body.inputs).to.eql([{ resource: \"wood\", amount: 20 }]);",
+                                    "});",
+                                    "pm.test(\"output was updated\", () => {",
+                                    "    pm.expect(body.output).to.eql({ item: pm.collectionVariables.get(\"recipeName\") + \"_item_v2\", quantity: 2 });",
+                                    "});",
+                                    "pm.test(\"unlock_condition is now exam_passed\", () => {",
+                                    "    pm.expect(body.unlock_condition).to.eql({ type: \"exam_passed\", course_id: \"math_analysis\", level: null });",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes/{{recipeId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes",
+                                "{{recipeId}}"
+                            ]
+                        },
+                        "description": "Replaces the inputs, output and unlock condition of the recipe. `name` is left out of the payload to confirm partial updates leave it untouched.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"inputs\": [\n        { \"resource\": \"wood\", \"amount\": 20 }\n    ],\n    \"output\": { \"item\": \"{{recipeName}}_item_v2\", \"quantity\": 2 },\n    \"unlock_condition\": { \"type\": \"exam_passed\", \"course_id\": \"math_analysis\" }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Update Recipe - Partial (Unlock Condition Only)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"unlock_condition switched to level_reached\", () => {",
+                                    "    pm.expect(body.unlock_condition).to.eql({ type: \"level_reached\", course_id: null, level: 5 });",
+                                    "});",
+                                    "pm.test(\"fields not included in this request are unchanged\", () => {",
+                                    "    pm.expect(body.name).to.eql(pm.collectionVariables.get(\"recipeName\"));",
+                                    "    pm.expect(body.inputs).to.eql([{ resource: \"wood\", amount: 20 }]);",
+                                    "    pm.expect(body.output).to.eql({ item: pm.collectionVariables.get(\"recipeName\") + \"_item_v2\", quantity: 2 });",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes/{{recipeId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes",
+                                "{{recipeId}}"
+                            ]
+                        },
+                        "description": "Only `unlock_condition` is supplied. Confirms every other field (`name`, `inputs`, `output`) is left as-is, per the \"every field is optional\" update contract.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"unlock_condition\": { \"type\": \"level_reached\", \"level\": 5 }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Validation Errors (400)",
+            "description": "Each of these submits a recipe payload that fails one validation rule from RecipeValidator. Self-contained - no dependency on state from other folders.",
+            "item": [
+                {
+                    "name": "Create Recipe - Missing Name (400)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"error is invalid_recipe\", () => pm.expect(body.error).to.eql(\"invalid_recipe\"));",
+                                    "pm.test(\"message mentions the missing name\", () => pm.expect(body.message).to.include(\"name\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "`name` is omitted entirely.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"inputs\": [\n        { \"resource\": \"wood\", \"amount\": 5 }\n    ],\n    \"output\": { \"item\": \"test_item\", \"quantity\": 1 }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Recipe - No Inputs (400)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"error is invalid_recipe\", () => pm.expect(body.error).to.eql(\"invalid_recipe\"));",
+                                    "pm.test(\"message mentions at least one input\", () => pm.expect(body.message).to.include(\"at least one input\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "`inputs` is an empty array.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"validation_test_no_inputs\",\n    \"inputs\": [],\n    \"output\": { \"item\": \"test_item\", \"quantity\": 1 }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Recipe - Invalid Input Amount (400)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"error is invalid_recipe\", () => pm.expect(body.error).to.eql(\"invalid_recipe\"));",
+                                    "pm.test(\"message mentions amount greater than zero\", () => pm.expect(body.message).to.include(\"greater than zero\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "An input's `amount` is zero.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"validation_test_bad_amount\",\n    \"inputs\": [\n        { \"resource\": \"wood\", \"amount\": 0 }\n    ],\n    \"output\": { \"item\": \"test_item\", \"quantity\": 1 }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Recipe - Duplicate Resource In Inputs (400)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"error is invalid_recipe\", () => pm.expect(body.error).to.eql(\"invalid_recipe\"));",
+                                    "pm.test(\"message mentions the resource is listed more than once\", () => pm.expect(body.message).to.include(\"listed more than once\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "The same resource (case-insensitively) appears twice in `inputs`.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"validation_test_dup_input\",\n    \"inputs\": [\n        { \"resource\": \"wood\", \"amount\": 5 },\n        { \"resource\": \"WOOD\", \"amount\": 3 }\n    ],\n    \"output\": { \"item\": \"test_item\", \"quantity\": 1 }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Recipe - Missing Output (400)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"error is invalid_recipe\", () => pm.expect(body.error).to.eql(\"invalid_recipe\"));",
+                                    "pm.test(\"message mentions the output item is required\", () => pm.expect(body.message).to.include(\"output item is required\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "`output` is omitted entirely.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"validation_test_no_output\",\n    \"inputs\": [\n        { \"resource\": \"wood\", \"amount\": 5 }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Recipe - Invalid Output Quantity (400)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"error is invalid_recipe\", () => pm.expect(body.error).to.eql(\"invalid_recipe\"));",
+                                    "pm.test(\"message mentions quantity must be greater than zero\", () => pm.expect(body.message).to.include(\"quantity must be greater than zero\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "`output.quantity` is zero.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"validation_test_bad_quantity\",\n    \"inputs\": [\n        { \"resource\": \"wood\", \"amount\": 5 }\n    ],\n    \"output\": { \"item\": \"test_item\", \"quantity\": 0 }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Recipe - Exam Passed Missing Course Id (400)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"error is invalid_recipe\", () => pm.expect(body.error).to.eql(\"invalid_recipe\"));",
+                                    "pm.test(\"message mentions course_id\", () => pm.expect(body.message).to.include(\"course_id\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "`unlock_condition.type` is `exam_passed` with no `course_id`.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"validation_test_exam_no_course\",\n    \"inputs\": [\n        { \"resource\": \"wood\", \"amount\": 5 }\n    ],\n    \"output\": { \"item\": \"test_item\", \"quantity\": 1 },\n    \"unlock_condition\": { \"type\": \"exam_passed\" }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Recipe - Level Reached Missing Level (400)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"error is invalid_recipe\", () => pm.expect(body.error).to.eql(\"invalid_recipe\"));",
+                                    "pm.test(\"message mentions level greater than zero\", () => pm.expect(body.message).to.include(\"level greater than zero\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "`unlock_condition.type` is `level_reached` with no `level`.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"validation_test_level_no_level\",\n    \"inputs\": [\n        { \"resource\": \"wood\", \"amount\": 5 }\n    ],\n    \"output\": { \"item\": \"test_item\", \"quantity\": 1 },\n    \"unlock_condition\": { \"type\": \"level_reached\" }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Conflict Cases (409)",
+            "description": "Depends on the Recipes folder having run first, so that {{recipeName}} is taken by {{recipeId}}.",
+            "item": [
+                {
+                    "name": "Create Recipe - Duplicate Name (409)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 409 Conflict\", () => pm.response.to.have.status(409));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"error is duplicate_recipe_name\", () => pm.expect(body.error).to.eql(\"duplicate_recipe_name\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "Reuses `{{recipeName}}`, which already belongs to the recipe created earlier in this run.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"{{recipeName}}\",\n    \"inputs\": [\n        { \"resource\": \"wood\", \"amount\": 5 }\n    ],\n    \"output\": { \"item\": \"conflict_test_item\", \"quantity\": 1 }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Update Recipe - Duplicate Name (409)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 409 Conflict\", () => pm.response.to.have.status(409));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"error is duplicate_recipe_name\", () => pm.expect(body.error).to.eql(\"duplicate_recipe_name\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes/{{secondaryRecipeId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes",
+                                "{{secondaryRecipeId}}"
+                            ]
+                        },
+                        "description": "Tries to rename the second recipe to `{{recipeName}}`, which is already taken by the first recipe.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"{{recipeName}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Not Found Cases",
+            "description": "Requests for recipes that do not exist must return 404 with `error: recipe_not_found`.",
+            "item": [
+                {
+                    "name": "Get Recipe - Unknown Recipe (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 404 Not Found\", () => pm.response.to.have.status(404));",
+                                    "pm.test(\"error is recipe_not_found\", () => pm.expect(pm.response.json().error).to.eql(\"recipe_not_found\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes/{{$guid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes",
+                                "{{$guid}}"
+                            ]
+                        },
+                        "description": "A well-formed but unknown recipe id."
+                    }
+                },
+                {
+                    "name": "Update Recipe - Unknown Recipe (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 404 Not Found\", () => pm.response.to.have.status(404));",
+                                    "pm.test(\"error is recipe_not_found\", () => pm.expect(pm.response.json().error).to.eql(\"recipe_not_found\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes/{{$guid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes",
+                                "{{$guid}}"
+                            ]
+                        },
+                        "description": "A well-formed but unknown recipe id.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"does_not_matter\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Recipe - Unknown Recipe (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 404 Not Found\", () => pm.response.to.have.status(404));",
+                                    "pm.test(\"error is recipe_not_found\", () => pm.expect(pm.response.json().error).to.eql(\"recipe_not_found\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes/{{$guid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes",
+                                "{{$guid}}"
+                            ]
+                        },
+                        "description": "A well-formed but unknown recipe id."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Cleanup",
+            "description": "Deletes the recipes created by this run. Keep this folder last.",
+            "item": [
+                {
+                    "name": "Delete Recipe",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));",
+                                    "pm.test(\"response has no body\", () => pm.expect(pm.response.text()).to.be.empty);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes/{{recipeId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes",
+                                "{{recipeId}}"
+                            ]
+                        },
+                        "description": "Deletes the primary recipe and its inputs."
+                    }
+                },
+                {
+                    "name": "Delete Second Recipe",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));",
+                                    "pm.test(\"response has no body\", () => pm.expect(pm.response.text()).to.be.empty);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes/{{secondaryRecipeId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes",
+                                "{{secondaryRecipeId}}"
+                            ]
+                        },
+                        "description": "Deletes the second recipe and its inputs."
+                    }
+                },
+                {
+                    "name": "Get Recipe - After Delete (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 404 Not Found\", () => pm.response.to.have.status(404));",
+                                    "pm.test(\"error is recipe_not_found\", () => pm.expect(pm.response.json().error).to.eql(\"recipe_not_found\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes/{{recipeId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes",
+                                "{{recipeId}}"
+                            ]
+                        },
+                        "description": "Confirms the primary recipe is gone."
+                    }
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:5198",
+            "type": "string"
+        },
+        {
+            "key": "recipeName",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "recipeId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "secondaryRecipeName",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "secondaryRecipeId",
+            "value": "",
+            "type": "string"
+        }
+    ]
+}

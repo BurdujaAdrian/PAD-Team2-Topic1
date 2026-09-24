@@ -1,0 +1,793 @@
+{
+    "info": {
+        "_postman_id": "6f0c1f0e-5b1a-4a53-9a55-3c6a8f5b7d21",
+        "name": "Base Service",
+        "description": "Test collection for the Base Service (`services/base-service`).\n\nRun the folders top to bottom (or use the Collection Runner). **Bases > Create Base** creates a fresh base and stores its ids as collection variables that the later requests use; **Cleanup** deletes it.\n\nVariable `baseUrl` defaults to `http://localhost:5076` (the `dotnet run` port).",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Status",
+            "description": "Health check.",
+            "item": [
+                {
+                    "name": "Service Status",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"service is base and status is ok\", () => {",
+                                    "    pm.expect(body.service).to.eql(\"base\");",
+                                    "    pm.expect(body.status).to.eql(\"ok\");",
+                                    "});",
+                                    "pm.test(\"uptime_seconds is a non-negative number\", () => {",
+                                    "    pm.expect(body.uptime_seconds).to.be.a(\"number\");",
+                                    "    pm.expect(body.uptime_seconds).to.be.at.least(0);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/status",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "status"
+                            ]
+                        },
+                        "description": "Health check. Returns the service name, `ok` status and uptime in seconds."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Bases",
+            "description": "Create, read and update a base. Run the requests in order: Create Base stores `baseId`, `roomId` and `facilityId` as collection variables for every request after it.",
+            "item": [
+                {
+                    "name": "Create Base",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set(\"playerId\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                                ]
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"Location header points to the new base\", () => {",
+                                    "    pm.expect(pm.response.headers.get(\"Location\")).to.include(body.base_id);",
+                                    "});",
+                                    "pm.test(\"base belongs to the requested player\", () => {",
+                                    "    pm.expect(body.player_id).to.eql(pm.collectionVariables.get(\"playerId\"));",
+                                    "});",
+                                    "pm.test(\"base is seeded with one starter room at barricade level 0\", () => {",
+                                    "    pm.expect(body.rooms).to.have.lengthOf(1);",
+                                    "    pm.expect(body.rooms[0].barricade_level).to.eql(0);",
+                                    "});",
+                                    "pm.test(\"base is seeded with one level 1 crafting_station\", () => {",
+                                    "    pm.expect(body.facilities).to.have.lengthOf(1);",
+                                    "    pm.expect(body.facilities[0].type).to.eql(\"crafting_station\");",
+                                    "    pm.expect(body.facilities[0].level).to.eql(1);",
+                                    "});",
+                                    "pm.test(\"response has the expected fields\", () => {",
+                                    "    pm.expect(body).to.have.all.keys(\"base_id\", \"player_id\", \"defense_score\", \"storage_capacity\", \"rooms\", \"facilities\");",
+                                    "});",
+                                    "pm.collectionVariables.set(\"baseId\", body.base_id);",
+                                    "pm.collectionVariables.set(\"roomId\", body.rooms[0].room_id);",
+                                    "pm.collectionVariables.set(\"facilityId\", body.facilities[0].facility_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases"
+                            ]
+                        },
+                        "description": "Creates a base for a player. Auto-seeds one starter room (barricade level 0) and one starter facility (`crafting_station`, level 1). Saves `baseId`, `roomId` and `facilityId` for the following requests.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"player_id\": \"{{playerId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Get Base State",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"returns the created base\", () => {",
+                                    "    pm.expect(body.base_id).to.eql(pm.collectionVariables.get(\"baseId\"));",
+                                    "    pm.expect(body.player_id).to.eql(pm.collectionVariables.get(\"playerId\"));",
+                                    "});",
+                                    "pm.test(\"rooms and facilities are present\", () => {",
+                                    "    pm.expect(body.rooms).to.be.an(\"array\").that.is.not.empty;",
+                                    "    pm.expect(body.facilities).to.be.an(\"array\").that.is.not.empty;",
+                                    "});",
+                                    "pm.test(\"defense_score and storage_capacity are numbers\", () => {",
+                                    "    pm.expect(body.defense_score).to.be.a(\"number\");",
+                                    "    pm.expect(body.storage_capacity).to.be.a(\"number\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{baseId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{baseId}}"
+                            ]
+                        },
+                        "description": "Returns the full current state of the base created by **Create Base**."
+                    }
+                },
+                {
+                    "name": "Update Base",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"storage_capacity was updated to 150\", () => pm.expect(body.storage_capacity).to.eql(150));",
+                                    "pm.test(\"rooms and facilities are unchanged\", () => {",
+                                    "    pm.expect(body.rooms).to.have.lengthOf(1);",
+                                    "    pm.expect(body.facilities).to.have.lengthOf(1);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{baseId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{baseId}}"
+                            ]
+                        },
+                        "description": "Updates mutable top-level base fields (currently `storage_capacity`).",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"storage_capacity\": 150\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Rooms",
+            "description": "Barricade reinforcement (max level 5). Resource costs come from the mocked Resource Service formula.",
+            "item": [
+                {
+                    "name": "Reinforce Room",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set(\"requestId\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                                ]
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"barricade_level is now 1\", () => {",
+                                    "    pm.expect(body.room_id).to.eql(pm.collectionVariables.get(\"roomId\"));",
+                                    "    pm.expect(body.barricade_level).to.eql(1);",
+                                    "});",
+                                    "pm.test(\"resources_spent matches the mocked cost (20 wood, 10 metal_scraps)\", () => {",
+                                    "    pm.expect(body.resources_spent).to.eql({ wood: 20, metal_scraps: 10 });",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{baseId}}/rooms/{{roomId}}/reinforce",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{baseId}}",
+                                "rooms",
+                                "{{roomId}}",
+                                "reinforce"
+                            ]
+                        },
+                        "description": "Raises the room's barricade from level 0 to 1. Idempotent by `request_id`, which is generated fresh for this request and stored as `requestId` so the replay request below can reuse it.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"request_id\": \"{{requestId}}\",\n    \"target_barricade_level\": 1\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Reinforce Room - Idempotent Replay",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"barricade_level is unchanged (still 1)\", () => pm.expect(body.barricade_level).to.eql(1));",
+                                    "pm.test(\"no resources are spent on a replay\", () => pm.expect(body.resources_spent).to.eql({}));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{baseId}}/rooms/{{roomId}}/reinforce",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{baseId}}",
+                                "rooms",
+                                "{{roomId}}",
+                                "reinforce"
+                            ]
+                        },
+                        "description": "Re-sends the previous request with the same `request_id`. The level must not change and no resources are charged a second time.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"request_id\": \"{{requestId}}\",\n    \"target_barricade_level\": 1\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Reinforce Room - Target Not Higher Than Current (409)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 409 Conflict\", () => pm.response.to.have.status(409));",
+                                    "pm.test(\"error is insufficient_resources\", () => pm.expect(pm.response.json().error).to.eql(\"insufficient_resources\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{baseId}}/rooms/{{roomId}}/reinforce",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{baseId}}",
+                                "rooms",
+                                "{{roomId}}",
+                                "reinforce"
+                            ]
+                        },
+                        "description": "The room is already at level 1, so asking for level 1 again with a new `request_id` is rejected.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"request_id\": \"{{$guid}}\",\n    \"target_barricade_level\": 1\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Reinforce Room - Above Max Level (409)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 409 Conflict\", () => pm.response.to.have.status(409));",
+                                    "pm.test(\"error is insufficient_resources\", () => pm.expect(pm.response.json().error).to.eql(\"insufficient_resources\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{baseId}}/rooms/{{roomId}}/reinforce",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{baseId}}",
+                                "rooms",
+                                "{{roomId}}",
+                                "reinforce"
+                            ]
+                        },
+                        "description": "The maximum barricade level is 5, so level 6 is rejected.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"request_id\": \"{{$guid}}\",\n    \"target_barricade_level\": 6\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Facilities",
+            "description": "Facility upgrades (max level 10).",
+            "item": [
+                {
+                    "name": "Upgrade Facility",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"facility is now level 2\", () => {",
+                                    "    pm.expect(body.facility_id).to.eql(pm.collectionVariables.get(\"facilityId\"));",
+                                    "    pm.expect(body.type).to.eql(\"crafting_station\");",
+                                    "    pm.expect(body.level).to.eql(2);",
+                                    "});",
+                                    "pm.test(\"resources_spent matches the mocked cost (15 metal_scraps, 5 paper)\", () => {",
+                                    "    pm.expect(body.resources_spent).to.eql({ metal_scraps: 15, paper: 5 });",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{baseId}}/facilities/{{facilityId}}/upgrade",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{baseId}}",
+                                "facilities",
+                                "{{facilityId}}",
+                                "upgrade"
+                            ]
+                        },
+                        "description": "Upgrades the starter crafting station from level 1 to level 2."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Kiki",
+            "description": "Random reward interaction with a 60 second cooldown per base. Run these two requests back to back.",
+            "item": [
+                {
+                    "name": "Kiki Interact",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"reward_type is a known reward\", () => {",
+                                    "    pm.expect(body.reward_type).to.be.oneOf([\"booster\", \"resource_crate\", \"cosmetic_skin\", \"rare_blueprint\"]);",
+                                    "});",
+                                    "pm.test(\"reward is granted to the base owner\", () => {",
+                                    "    pm.expect(body.granted_to).to.eql(pm.collectionVariables.get(\"playerId\"));",
+                                    "    pm.expect(body.reward_id).to.be.a(\"string\").and.not.empty;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{baseId}}/kiki/interact",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{baseId}}",
+                                "kiki",
+                                "interact"
+                            ]
+                        },
+                        "description": "Triggers a random reward, granted to the base's owner."
+                    }
+                },
+                {
+                    "name": "Kiki Interact - Cooldown Active (429)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 429 Too Many Requests\", () => pm.response.to.have.status(429));",
+                                    "pm.test(\"error is cooldown_active\", () => pm.expect(pm.response.json().error).to.eql(\"cooldown_active\"));",
+                                    "pm.test(\"Retry-After header is between 1 and 60 seconds\", () => {",
+                                    "    const retryAfter = parseInt(pm.response.headers.get(\"Retry-After\"), 10);",
+                                    "    pm.expect(retryAfter).to.be.within(1, 60);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{baseId}}/kiki/interact",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{baseId}}",
+                                "kiki",
+                                "interact"
+                            ]
+                        },
+                        "description": "Interacting again immediately is rejected until the 60 second cooldown has elapsed."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Not Found Cases",
+            "description": "Requests for resources that do not exist must return 404 with `error: not_found`.",
+            "item": [
+                {
+                    "name": "Get Base - Unknown Base (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 404 Not Found\", () => pm.response.to.have.status(404));",
+                                    "pm.test(\"error is not_found\", () => pm.expect(pm.response.json().error).to.eql(\"not_found\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{$guid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{$guid}}"
+                            ]
+                        },
+                        "description": "A well-formed but unknown base id."
+                    }
+                },
+                {
+                    "name": "Reinforce Room - Unknown Room (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 404 Not Found\", () => pm.response.to.have.status(404));",
+                                    "pm.test(\"error is not_found\", () => pm.expect(pm.response.json().error).to.eql(\"not_found\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{baseId}}/rooms/{{$guid}}/reinforce",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{baseId}}",
+                                "rooms",
+                                "{{$guid}}",
+                                "reinforce"
+                            ]
+                        },
+                        "description": "The base exists but the room id does not belong to it.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"request_id\": \"{{$guid}}\",\n    \"target_barricade_level\": 2\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Upgrade Facility - Unknown Facility (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 404 Not Found\", () => pm.response.to.have.status(404));",
+                                    "pm.test(\"error is not_found\", () => pm.expect(pm.response.json().error).to.eql(\"not_found\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{baseId}}/facilities/{{$guid}}/upgrade",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{baseId}}",
+                                "facilities",
+                                "{{$guid}}",
+                                "upgrade"
+                            ]
+                        },
+                        "description": "The base exists but the facility id does not belong to it."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Cleanup",
+            "description": "Deletes the base created by this run. Keep this folder last.",
+            "item": [
+                {
+                    "name": "Delete Base",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));",
+                                    "pm.test(\"response has no body\", () => pm.expect(pm.response.text()).to.be.empty);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{baseId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{baseId}}"
+                            ]
+                        },
+                        "description": "Deletes the base and cascades to its rooms, facilities and Kiki reward history."
+                    }
+                },
+                {
+                    "name": "Get Base - After Delete (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 404 Not Found\", () => pm.response.to.have.status(404));",
+                                    "pm.test(\"error is not_found\", () => pm.expect(pm.response.json().error).to.eql(\"not_found\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{baseId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{baseId}}"
+                            ]
+                        },
+                        "description": "Confirms the base is gone."
+                    }
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:5076",
+            "type": "string"
+        },
+        {
+            "key": "playerId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "baseId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "roomId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "facilityId",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "requestId",
+            "value": "",
+            "type": "string"
+        }
+    ]
+}

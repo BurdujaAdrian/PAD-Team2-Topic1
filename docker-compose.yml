@@ -1,0 +1,317 @@
+# Common deployment for PAD Team 2's services.
+# teammate's service is pulled as a prebuilt image from DockerHub.
+
+services:
+    # ---------------------------------------------------------------------
+    # Base Service
+    # ---------------------------------------------------------------------
+    base-db:
+        image: postgres:16
+        container_name: cpr-base-postgres
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: ${BASE_POSTGRES_DB}
+            POSTGRES_USER: ${BASE_POSTGRES_USER}
+            POSTGRES_PASSWORD: ${BASE_POSTGRES_PASSWORD}
+        ports:
+            - "127.0.0.1:5432:5432"
+        volumes:
+            - base_pgdata:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${BASE_POSTGRES_USER} -d ${BASE_POSTGRES_DB}"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    base-api:
+        image: ion04/base-service:1.0.0
+        container_name: cpr-base-api
+        restart: unless-stopped
+        environment:
+            ASPNETCORE_ENVIRONMENT: Production
+            ConnectionStrings__DefaultConnection: Host=base-db;Port=5432;Database=${BASE_POSTGRES_DB};Username=${BASE_POSTGRES_USER};Password=${BASE_POSTGRES_PASSWORD}
+        ports:
+            - "5076:8080"
+        depends_on:
+            base-db:
+                condition: service_healthy
+
+    # ---------------------------------------------------------------------
+    # Crafting Service
+    # ---------------------------------------------------------------------
+    crafting-db:
+        image: postgres:17
+        container_name: cpr-crafting-postgres
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: ${CRAFTING_POSTGRES_DB}
+            POSTGRES_USER: ${CRAFTING_POSTGRES_USER}
+            POSTGRES_PASSWORD: ${CRAFTING_POSTGRES_PASSWORD}
+        ports:
+            - "127.0.0.1:5433:5432"
+        volumes:
+            - crafting_pgdata:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${CRAFTING_POSTGRES_USER} -d ${CRAFTING_POSTGRES_DB}"]
+            interval: 5s
+            timeout: 5s
+            retries: 10
+
+    crafting-api:
+        image: ion04/crafting-service:1.0.0
+        container_name: cpr-crafting-api
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: ${CRAFTING_POSTGRES_DB}
+            POSTGRES_USER: ${CRAFTING_POSTGRES_USER}
+            POSTGRES_PASSWORD: ${CRAFTING_POSTGRES_PASSWORD}
+            POSTGRES_HOST: crafting-db
+            POSTGRES_PORT: 5432
+        ports:
+            - "5198:8080"
+        depends_on:
+            crafting-db:
+                condition: service_healthy
+
+    # ---------------------------------------------------------------------
+    # Zombie Service
+    # ---------------------------------------------------------------------
+    zombie-db:
+        image: postgres:17
+        container_name: cpr-zombie-postgres
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: ${ZOMBIE_POSTGRES_DB}
+            POSTGRES_USER: ${ZOMBIE_POSTGRES_USER}
+            POSTGRES_PASSWORD: ${ZOMBIE_POSTGRES_PASSWORD}
+        ports:
+            - "127.0.0.1:5434:5432"
+        volumes:
+            - zombie_pgdata:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${ZOMBIE_POSTGRES_USER} -d ${ZOMBIE_POSTGRES_DB}"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    zombie-api:
+        image: susanito88/zombie-service:1.0.0
+        container_name: cpr-zombie-api
+        restart: unless-stopped
+        environment:
+            ConnectionStrings__Database: Host=zombie-db;Port=5432;Database=${ZOMBIE_POSTGRES_DB};Username=${ZOMBIE_POSTGRES_USER};Password=${ZOMBIE_POSTGRES_PASSWORD}
+            Database__ApplyMigrationsOnStartup: "true"
+        ports:
+            - "8081:8080"
+        depends_on:
+            zombie-db:
+                condition: service_healthy
+
+    # ---------------------------------------------------------------------
+    # Resource Service
+    # ---------------------------------------------------------------------
+    resource-db:
+        image: postgres:17
+        container_name: cpr-resource-postgres
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: ${RESOURCE_POSTGRES_DB}
+            POSTGRES_USER: ${RESOURCE_POSTGRES_USER}
+            POSTGRES_PASSWORD: ${RESOURCE_POSTGRES_PASSWORD}
+        ports:
+            - "127.0.0.1:5435:5432"
+        volumes:
+            - resource_pgdata:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${RESOURCE_POSTGRES_USER} -d ${RESOURCE_POSTGRES_DB}"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    resource-api:
+        image: susanito88/resource-service:1.0.0
+        container_name: cpr-resource-api
+        restart: unless-stopped
+        environment:
+            ConnectionStrings__Database: Host=resource-db;Port=5432;Database=${RESOURCE_POSTGRES_DB};Username=${RESOURCE_POSTGRES_USER};Password=${RESOURCE_POSTGRES_PASSWORD}
+            Database__ApplyMigrationsOnStartup: "true"
+        ports:
+            - "8082:8080"
+        depends_on:
+            resource-db:
+                condition: service_healthy
+
+    # ---------------------------------------------------------------------
+    # Game Service
+    # ---------------------------------------------------------------------
+    game-db:
+        image: rqlite/rqlite:10.3.6
+        container_name: cpr-game-db
+        restart: unless-stopped
+        # Both advertised addresses are pinned to the service name. rqlite
+        # stores its Raft address in the volume, and the default is the
+        # container hostname, which Compose changes on every recreation: the
+        # stored address then points at a host that no longer exists, the node
+        # never reaches a stable configuration, /readyz answers 503 and the
+        # service waiting on it never starts.
+        command:
+            - -node-id=game
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=game-db:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=game-db:4002
+        volumes:
+            - game-data:/rqlite/file
+        ports:
+            - "127.0.0.1:4004:4001"   # HTTP API — only needed on the host for local debugging
+        healthcheck:
+            test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
+            interval: 3s
+            timeout: 2s
+            retries: 10
+            start_period: 5s
+
+    game-service:
+        image: adrianburduja/game-service:0.0.1
+        container_name: cpr-game-service
+        restart: unless-stopped
+        depends_on:
+            game-db:
+                condition: service_healthy
+        environment:
+            - DB_DSN=http://game-db:4001
+        ports:
+            - "8086:8080"
+
+    # ---------------------------------------------------------------------
+    # Player Service
+    # ---------------------------------------------------------------------
+    player-db:
+        image: rqlite/rqlite:10.3.6
+        container_name: cpr-player-db
+        restart: unless-stopped
+        # Both advertised addresses are pinned to the service name. rqlite
+        # stores its Raft address in the volume, and the default is the
+        # container hostname, which Compose changes on every recreation: the
+        # stored address then points at a host that no longer exists, the node
+        # never reaches a stable configuration, /readyz answers 503 and the
+        # service waiting on it never starts.
+        command:
+            - -node-id=player
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=player-db:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=player-db:4002
+        volumes:
+            - player-data:/rqlite/file
+        ports:
+            - "127.0.0.1:4002:4001"   # HTTP API — only needed on the host for local debugging
+        healthcheck:
+            test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
+            interval: 3s
+            timeout: 2s
+            retries: 10
+            start_period: 5s
+
+    player-service:
+        image: adrianburduja/player-service:0.0.1
+        container_name: cpr-player-service
+        restart: unless-stopped
+        depends_on:
+            player-db:
+                condition: service_healthy
+        environment:
+            - DB_DSN=http://player-db:4001
+        ports:
+            - "8085:8080"
+
+    # ---------------------------------------------------------------------
+    # Exam Service
+    # ---------------------------------------------------------------------
+    exam-db:
+        image: rqlite/rqlite:10.3.6
+        container_name: cpr-exam-rqlite
+        restart: unless-stopped
+        command:
+            - -node-id=exam
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=exam-db:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=exam-db:4002
+            - -auth=/auth/users.json
+        ports:
+            - "127.0.0.1:4001:4001"
+        volumes:
+            - exam_rqlite_data:/rqlite/file
+            - ./secrets/exam-rqlite-users.json:/auth/users.json:ro
+        healthcheck:
+            test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    exam-api:
+        image: gheorghe2973/exam-service:1.2.0
+        container_name: cpr-exam-api
+        restart: unless-stopped
+        environment:
+            RQLITE_URL: http://${EXAM_RQLITE_USER}:${EXAM_RQLITE_PASSWORD}@exam-db:4001
+            SEED_ON_START: "true"
+            # Where exam_passed goes. A passed exam expands the campus, so the
+            # World Service subscribes. achievement_unlocked belongs to the
+            # Player Service and is wired once that service exposes an endpoint.
+            EXAM_PASSED_SUBSCRIBERS: http://world-api:8080/api/events/exam-passed
+        ports:
+            - "8083:8080"
+        depends_on:
+            exam-db:
+                condition: service_healthy
+
+    # ---------------------------------------------------------------------
+    # World Service
+    # ---------------------------------------------------------------------
+    world-db:
+        image: rqlite/rqlite:10.3.6
+        container_name: cpr-world-rqlite
+        restart: unless-stopped
+        command:
+            - -node-id=world
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=world-db:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=world-db:4002
+            - -auth=/auth/users.json
+        ports:
+            - "127.0.0.1:4003:4001"
+        volumes:
+            - world_rqlite_data:/rqlite/file
+            - ./secrets/world-rqlite-users.json:/auth/users.json:ro
+        healthcheck:
+            test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    world-api:
+        image: gheorghe2973/world-service:1.2.0
+        container_name: cpr-world-api
+        restart: unless-stopped
+        environment:
+            RQLITE_URL: http://${WORLD_RQLITE_USER}:${WORLD_RQLITE_PASSWORD}@world-db:4001
+            SEED_ON_START: "true"
+            SECTION_UNLOCKED_SUBSCRIBERS: ""
+        ports:
+            - "8084:8080"
+        depends_on:
+            world-db:
+                condition: service_healthy
+
+volumes:
+    base_pgdata:
+    crafting_pgdata:
+    zombie_pgdata:
+    resource_pgdata:
+    game-data:
+    player-data:
+    exam_rqlite_data:
+    world_rqlite_data:
