@@ -1,8 +1,5 @@
 # Common deployment for PAD Team 2's services.
 # teammate's service is pulled as a prebuilt image from DockerHub.
-#
-# Currently wired in: base-service, crafting-service, zombie-service,
-# resource-service, exam-service, world-service.
 
 services:
     # ---------------------------------------------------------------------
