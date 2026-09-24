@@ -1,0 +1,1831 @@
+{
+  "info": {
+    "_postman_id": "0d00e639-c503-4307-8f13-57d0e0d9969e",
+    "name": "PAD Team 2 \u2014 World Service",
+    "description": "World Service (Gurschi Gheorghe, Go). Owns the persistent campus map: rooms, sections, resource node placement, zombie spawn points and section unlock state.\n\n**Running it:** start the service with `go run ./cmd/server` in this repository, then run the whole collection. Every request asserts the status code the contract promises, so a green run means the service still honours it.\n\n**Data:** the service seeds the campus `utm_campus` at boot. The Main Wing is open, the East Wing waits on `math_analysis` and the North Wing on `operating_systems`. The CRUD folders create and delete their own throwaway records, so the seeded campus survives a run.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Map queries",
+      "description": "What the Game Service reads on every cycle tick.",
+      "item": [
+        {
+          "name": "Get the campus map",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{worldId}}/map?unlocked=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{worldId}}",
+                "map"
+              ],
+              "query": [
+                {
+                  "key": "unlocked",
+                  "value": "true",
+                  "description": "Set to false to include locked sections"
+                }
+              ]
+            },
+            "description": "The full topology. `unlocked` defaults to true, so locked sections stay hidden unless asked for."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get the map including locked sections",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{worldId}}/map?unlocked=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{worldId}}",
+                "map"
+              ],
+              "query": [
+                {
+                  "key": "unlocked",
+                  "value": "false",
+                  "description": "Include locked sections"
+                }
+              ]
+            },
+            "description": "The same call with `unlocked=false`, which stops filtering and returns every room."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List rooms",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{worldId}}/rooms?type=library&unlocked=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{worldId}}",
+                "rooms"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "library",
+                  "description": "Filter by room type"
+                },
+                {
+                  "key": "unlocked",
+                  "value": "true",
+                  "description": "Filter by unlock state"
+                }
+              ]
+            },
+            "description": "Rooms with optional filters by `type`, `section_id` and `unlocked`. Used to decide where an action is possible."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get room",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rooms/{{roomId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rooms",
+                "{{roomId}}"
+              ]
+            },
+            "description": "One room. `unlocked` is derived from its section rather than stored on the room, so the two can never disagree."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get resource nodes in a room",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rooms/{{roomId}}/resource-nodes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rooms",
+                "{{roomId}}",
+                "resource-nodes"
+              ]
+            },
+            "description": "Node placement and regeneration config. Current quantities belong to the Resource Service."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get spawn points in a room",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rooms/{{roomId}}/spawn-points",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rooms",
+                "{{roomId}}",
+                "spawn-points"
+              ]
+            },
+            "description": "Spawn configuration. Zombie statistics and behaviour belong to the Zombie Service; only the type ids live here."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Locked rooms",
+      "description": "A room the players cannot reach is indistinguishable from one that does not exist.",
+      "item": [
+        {
+          "name": "Resource nodes in a locked room",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rooms/{{lockedRoomId}}/resource-nodes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rooms",
+                "{{lockedRoomId}}",
+                "resource-nodes"
+              ]
+            },
+            "description": "The Canteen sits in the North Wing, which no exam has opened yet, so this answers 404 rather than revealing what is behind the door."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Spawn points in a locked room",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rooms/{{lockedRoomId}}/spawn-points",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rooms",
+                "{{lockedRoomId}}",
+                "spawn-points"
+              ]
+            },
+            "description": "Same rule for spawn configuration."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Section unlocking",
+      "description": "How the campus expands when an exam is passed.",
+      "item": [
+        {
+          "name": "List sections",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{worldId}}/sections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{worldId}}",
+                "sections"
+              ]
+            },
+            "description": "Every section with its unlock state and room count."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unlock the East Wing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{worldId}}/sections/unlock",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{worldId}}",
+                "sections",
+                "unlock"
+              ]
+            },
+            "description": "Unlocks the section mapped to the course, bumps the world version and publishes `section_unlocked`.\n\n`trigger_id` is the `attempt_id` the Exam Service returned. The normal flow is the `exam_passed` event; this endpoint is the administrative path.\n\nReturns **201** the first time and **200** on a replay.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trigger_id\": \"attempt-1\",\n  \"course_id\": \"math_analysis\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 201, 200\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([201, 200]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Replay the same trigger",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{worldId}}/sections/unlock",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{worldId}}",
+                "sections",
+                "unlock"
+              ]
+            },
+            "description": "The same `trigger_id` again. Answers 200 with `already_unlocked` true and publishes nothing, so a duplicated event cannot generate a second wing.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trigger_id\": \"attempt-1\",\n  \"course_id\": \"math_analysis\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"reports it was already unlocked\", function () {",
+                  "    pm.expect(pm.response.json().already_unlocked).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "The East Wing is now reachable",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rooms/room_lab_chem/resource-nodes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rooms",
+                "room_lab_chem",
+                "resource-nodes"
+              ]
+            },
+            "description": "The Chemistry Lab answered 404 before the unlock. Now its nodes are readable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get section",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sections/{{sectionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sections",
+                "{{sectionId}}"
+              ]
+            },
+            "description": "One section. 404 when unknown."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown course",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{worldId}}/sections/unlock",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{worldId}}",
+                "sections",
+                "unlock"
+              ]
+            },
+            "description": "404: no section is mapped to that course.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trigger_id\": \"attempt-ghost\",\n  \"course_id\": \"ghost_course\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Worlds",
+      "description": "CRUD over worlds. Works on a throwaway world, so the seeded campus is untouched.",
+      "item": [
+        {
+          "name": "Create world",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds"
+              ]
+            },
+            "description": "Creates a world. `world_id` is generated when omitted and the version starts at 1.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Campus\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code < 300) {",
+                  "    pm.collectionVariables.set(\"tempWorldId\", pm.response.json().world_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List worlds",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds"
+              ]
+            },
+            "description": "Every world."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get world",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{tempWorldId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{tempWorldId}}"
+              ]
+            },
+            "description": "One world, with its current version."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update world",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{tempWorldId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{tempWorldId}}"
+              ]
+            },
+            "description": "Renames the world and bumps its version.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Campus renamed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete world",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{tempWorldId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{tempWorldId}}"
+              ]
+            },
+            "description": "Deletes the world with its sections, rooms, nodes and spawn points."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 204\", function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get the deleted world",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{tempWorldId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{tempWorldId}}"
+              ]
+            },
+            "description": "Confirms the cascade: the world is gone."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Sections",
+      "description": "CRUD over sections. `unlock_course_id` names the course that opens them.",
+      "item": [
+        {
+          "name": "Create section",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{worldId}}/sections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{worldId}}",
+                "sections"
+              ]
+            },
+            "description": "Adds a section to the seeded campus.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"West Wing\",\n  \"unlocked\": true,\n  \"unlock_course_id\": \"physics\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code < 300) {",
+                  "    pm.collectionVariables.set(\"tempSectionId\", pm.response.json().section_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get section",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sections/{{tempSectionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sections",
+                "{{tempSectionId}}"
+              ]
+            },
+            "description": "The section just created."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update section",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sections/{{tempSectionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sections",
+                "{{tempSectionId}}"
+              ]
+            },
+            "description": "Replaces it. The world it belongs to cannot be changed.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"West Wing renamed\",\n  \"unlocked\": true,\n  \"unlock_course_id\": \"physics\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Rooms",
+      "description": "CRUD over rooms. The room is created inside the throwaway section above.",
+      "item": [
+        {
+          "name": "Create room",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{worldId}}/rooms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{worldId}}",
+                "rooms"
+              ]
+            },
+            "description": "Adds a room to a section of the world. The section must belong to the same world, otherwise 422.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"section_id\": \"{{tempSectionId}}\",\n  \"name\": \"Aula\",\n  \"type\": \"hall\",\n  \"floor\": 1,\n  \"adjacent_room_ids\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code < 300) {",
+                  "    pm.collectionVariables.set(\"tempRoomId\", pm.response.json().room_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get room",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rooms/{{tempRoomId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rooms",
+                "{{tempRoomId}}"
+              ]
+            },
+            "description": "The room just created."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update room",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/rooms/{{tempRoomId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rooms",
+                "{{tempRoomId}}"
+              ]
+            },
+            "description": "Replaces it. The world it belongs to cannot be changed.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Aula Mare\",\n  \"type\": \"hall\",\n  \"floor\": 1,\n  \"adjacent_room_ids\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Resource nodes",
+      "description": "CRUD over node placement. Quantities belong to the Resource Service.",
+      "item": [
+        {
+          "name": "Create resource node",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/rooms/{{tempRoomId}}/resource-nodes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rooms",
+                "{{tempRoomId}}",
+                "resource-nodes"
+              ]
+            },
+            "description": "Places a node in the throwaway room.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resource_type\": \"wood\",\n  \"regen_rate_per_minute\": 5,\n  \"max_capacity\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code < 300) {",
+                  "    pm.collectionVariables.set(\"tempNodeId\", pm.response.json().node_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get resource node",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/resource-nodes/{{tempNodeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resource-nodes",
+                "{{tempNodeId}}"
+              ]
+            },
+            "description": "One node. 404 when unknown."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update resource node",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/resource-nodes/{{tempNodeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resource-nodes",
+                "{{tempNodeId}}"
+              ]
+            },
+            "description": "Replaces the configuration. The room it sits in cannot be changed.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resource_type\": \"wood\",\n  \"regen_rate_per_minute\": 8,\n  \"max_capacity\": 120\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete resource node",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/resource-nodes/{{tempNodeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resource-nodes",
+                "{{tempNodeId}}"
+              ]
+            },
+            "description": "Removes the node."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 204\", function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. Spawn points",
+      "description": "CRUD over spawn configuration. Zombie stats belong to the Zombie Service.",
+      "item": [
+        {
+          "name": "Create spawn point",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/rooms/{{tempRoomId}}/spawn-points",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rooms",
+                "{{tempRoomId}}",
+                "spawn-points"
+              ]
+            },
+            "description": "Adds a spawn point. `active_during_cycle` must be day, night or both, otherwise 400.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"zombie_type_ids\": [\n    \"zombie_tourist\"\n  ],\n  \"density\": 2,\n  \"active_during_cycle\": \"night\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code < 300) {",
+                  "    pm.collectionVariables.set(\"tempSpawnPointId\", pm.response.json().spawn_point_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get spawn point",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/spawn-points/{{tempSpawnPointId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "spawn-points",
+                "{{tempSpawnPointId}}"
+              ]
+            },
+            "description": "One spawn point. 404 when unknown."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update spawn point",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/spawn-points/{{tempSpawnPointId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "spawn-points",
+                "{{tempSpawnPointId}}"
+              ]
+            },
+            "description": "Replaces the configuration. The room it sits in cannot be changed.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"zombie_type_ids\": [\n    \"zombie_tourist\",\n    \"zombie_professor\"\n  ],\n  \"density\": 3,\n  \"active_during_cycle\": \"both\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid cycle",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/rooms/{{tempRoomId}}/spawn-points",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rooms",
+                "{{tempRoomId}}",
+                "spawn-points"
+              ]
+            },
+            "description": "400: `active_during_cycle` only accepts day, night or both.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"zombie_type_ids\": [\n    \"zombie_tourist\"\n  ],\n  \"density\": 1,\n  \"active_during_cycle\": \"afternoon\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete spawn point",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/spawn-points/{{tempSpawnPointId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "spawn-points",
+                "{{tempSpawnPointId}}"
+              ]
+            },
+            "description": "Removes the spawn point."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 204\", function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "9. Event delivery",
+      "description": "The exam_passed event from the Exam Service, delivered over HTTP until the message broker lands. Status codes are chosen for a caller that retries: 2xx settles the event, 5xx asks for it again.",
+      "item": [
+        {
+          "name": "Deliver exam_passed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/exam-passed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "events",
+                "exam-passed"
+              ]
+            },
+            "description": "A passed exam arriving from the Exam Service. `attempt_id` is what the unlock path stores as its trigger, so the same event can be delivered again safely.\n\nReturns **202** when this delivery generated the section, **200** when the wing was already open.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"{{eventId}}\",\n  \"attempt_id\": \"{{triggerId}}\",\n  \"player_id\": \"player-1\",\n  \"course_id\": \"math_analysis\",\n  \"exam_type\": \"final\",\n  \"occurred_at\": \"2026-09-08T14:36:12Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A fresh trigger per run, so the folder stays re-runnable.",
+                  "const run = Date.now();",
+                  "pm.collectionVariables.set(\"triggerId\", \"attempt-\" + run);",
+                  "pm.collectionVariables.set(\"eventId\", \"event-\" + run);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 202, 200\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([202, 200]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Redeliver the same event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/exam-passed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "events",
+                "exam-passed"
+              ]
+            },
+            "description": "What a broker does after a timeout. The same `attempt_id` is answered with **200** and `already_applied`, and nothing is expanded a second time.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"{{eventId}}\",\n  \"attempt_id\": \"{{triggerId}}\",\n  \"player_id\": \"player-1\",\n  \"course_id\": \"math_analysis\",\n  \"exam_type\": \"final\",\n  \"occurred_at\": \"2026-09-08T14:36:12Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200]);",
+                  "});",
+                  "",
+                  "pm.test(\"reports it was already applied\", function () {",
+                  "    pm.expect(pm.response.json().outcome).to.eql(\"already_applied\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A course that expands nothing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/exam-passed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "events",
+                "exam-passed"
+              ]
+            },
+            "description": "Passing an exam that opens no wing is ordinary, so the event is acknowledged with **200** and `ignored` rather than rejected. Rejecting it would make a broker redeliver something that can never succeed.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"event-ignored\",\n  \"attempt_id\": \"attempt-ignored\",\n  \"player_id\": \"player-1\",\n  \"course_id\": \"underwater_basket_weaving\",\n  \"exam_type\": \"final\",\n  \"occurred_at\": \"2026-09-08T14:36:12Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200]);",
+                  "});",
+                  "",
+                  "pm.test(\"reports it was ignored\", function () {",
+                  "    pm.expect(pm.response.json().outcome).to.eql(\"ignored\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Malformed payload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/exam-passed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "events",
+                "exam-passed"
+              ]
+            },
+            "description": "**400**: the event is missing `attempt_id` and `course_id`, so there is nothing to apply.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"event-broken\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10. Cleanup",
+      "description": "Removes what the CRUD folders created, so the collection can be run again.",
+      "item": [
+        {
+          "name": "Delete the throwaway room",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rooms/{{tempRoomId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rooms",
+                "{{tempRoomId}}"
+              ]
+            },
+            "description": "Deletes the room with any remaining nodes and spawn points."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 204\", function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete the throwaway section",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sections/{{tempSectionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sections",
+                "{{tempSectionId}}"
+              ]
+            },
+            "description": "Deletes the section, leaving the seeded campus as it was."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 204\", function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "11. Service",
+      "description": "Health.",
+      "item": [
+        {
+          "name": "Service status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "status"
+              ]
+            },
+            "description": "Health check with uptime. Used by the other services and by the Compose health check."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8082",
+      "type": "string"
+    },
+    {
+      "key": "worldId",
+      "value": "utm_campus",
+      "type": "string"
+    },
+    {
+      "key": "sectionId",
+      "value": "section_main",
+      "type": "string"
+    },
+    {
+      "key": "roomId",
+      "value": "room_library",
+      "type": "string"
+    },
+    {
+      "key": "lockedRoomId",
+      "value": "room_canteen",
+      "type": "string"
+    },
+    {
+      "key": "nodeId",
+      "value": "node_library_paper",
+      "type": "string"
+    },
+    {
+      "key": "spawnPointId",
+      "value": "spawn_library_1",
+      "type": "string"
+    },
+    {
+      "key": "tempWorldId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tempSectionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tempRoomId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tempNodeId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tempSpawnPointId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "triggerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "eventId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

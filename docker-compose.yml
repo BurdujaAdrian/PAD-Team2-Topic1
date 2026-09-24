@@ -2,7 +2,7 @@
 # teammate's service is pulled as a prebuilt image from DockerHub.
 #
 # Currently wired in: base-service, crafting-service, zombie-service,
-# resource-service. Player.
+# resource-service, exam-service, world-service.
 
 services:
     # ---------------------------------------------------------------------
@@ -207,6 +207,138 @@ services:
     # TODO: Player Service, Game Service, Exam Service, World Service and
     # their database containers will be added here once ready.
     # ---------------------------------------------------------------------
+    game-db:
+        image: rqlite/rqlite:latest
+        container_name: cpr-game-db
+        restart: unless-stopped
+        volumes:
+            - game-data:/rqlite/file
+        healthcheck:
+            test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
+            interval: 3s
+            timeout: 2s
+            retries: 10
+            start_period: 5s
+
+    game-service:
+        image: adrianburduja/game-service:1.0.0
+        container_name: cpr-game-service
+        restart: unless-stopped
+        depends_on:
+            game-db:
+                condition: service_healthy
+        environment:
+            - DB_DSN=http://game-db:4001
+        ports:
+            - "8080:8080"
+
+    # ---------------------------------------------------------------------
+    # Player Service
+    # ---------------------------------------------------------------------
+    player-db:
+        image: rqlite/rqlite:latest
+        container_name: cpr-player-db
+        restart: unless-stopped
+        volumes:
+            - player-data:/rqlite/file
+        healthcheck:
+            test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
+            interval: 3s
+            timeout: 2s
+            retries: 10
+            start_period: 5s
+
+    player-service:
+        image: adrianburduja/player-service:1.0.0
+        container_name: cpr-player-service
+        restart: unless-stopped
+        depends_on:
+            player-db:
+                condition: service_healthy
+        environment:
+            - DB_DSN=http://player-db:4001
+        ports:
+            - "8085:8080"
+    # ---------------------------------------------------------------------
+    # Exam Service
+    # ---------------------------------------------------------------------
+    exam-db:
+        image: rqlite/rqlite:10.3.6
+        container_name: cpr-exam-rqlite
+        restart: unless-stopped
+        command:
+            - -node-id=exam
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=exam-db:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=exam-db:4002
+            - -auth=/auth/users.json
+        ports:
+            - "127.0.0.1:4001:4001"
+        volumes:
+            - exam_rqlite_data:/rqlite/file
+            - ./secrets/exam-rqlite-users.json:/auth/users.json:ro
+        healthcheck:
+            test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    exam-api:
+        image: gheorghe2973/exam-service:1.2.0
+        container_name: cpr-exam-api
+        restart: unless-stopped
+        environment:
+            RQLITE_URL: http://${EXAM_RQLITE_USER}:${EXAM_RQLITE_PASSWORD}@exam-db:4001
+            SEED_ON_START: "true"
+            # Where exam_passed goes. A passed exam expands the campus, so the
+            # World Service subscribes. achievement_unlocked belongs to the
+            # Player Service and is wired once that service exposes an endpoint.
+            EXAM_PASSED_SUBSCRIBERS: http://world-api:8080/api/events/exam-passed
+        ports:
+            - "8083:8080"
+        depends_on:
+            exam-db:
+                condition: service_healthy
+
+    # ---------------------------------------------------------------------
+    # World Service
+    # ---------------------------------------------------------------------
+    world-db:
+        image: rqlite/rqlite:10.3.6
+        container_name: cpr-world-rqlite
+        restart: unless-stopped
+        command:
+            - -node-id=world
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=world-db:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=world-db:4002
+            - -auth=/auth/users.json
+        ports:
+            - "127.0.0.1:4003:4001"
+        volumes:
+            - world_rqlite_data:/rqlite/file
+            - ./secrets/world-rqlite-users.json:/auth/users.json:ro
+        healthcheck:
+            test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    world-api:
+        image: gheorghe2973/world-service:1.2.0
+        container_name: cpr-world-api
+        restart: unless-stopped
+        environment:
+            RQLITE_URL: http://${WORLD_RQLITE_USER}:${WORLD_RQLITE_PASSWORD}@world-db:4001
+            SEED_ON_START: "true"
+            SECTION_UNLOCKED_SUBSCRIBERS: ""
+        ports:
+            - "8084:8080"
+        depends_on:
+            world-db:
+                condition: service_healthy
 
 volumes:
     base_pgdata:
@@ -215,3 +347,5 @@ volumes:
     resource_pgdata:
     game-data:
     player-data:
+    exam_rqlite_data:
+    world_rqlite_data:

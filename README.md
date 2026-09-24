@@ -5,14 +5,95 @@ PAD Team 2's Common Public Repository
 
 | Name             | Services                         | Language | Database   |
 | ---------------- | -------------------------------- | -------- | ---------- |
-| Burduja Adrian   | Player Service, Game Service     | Go       | SQLite     |
-| Gurschi Gheorghe | Exam Service, World Service      | Go       | SQLite     |
+| Burduja Adrian   | Player Service, Game Service     | Go       | RQLite     |
+| Gurschi Gheorghe | Exam Service, World Service      | Go       | rqlite     |
 | Vornicescu Ion   | Base Service, Crafting Service   | C#       | PostgreSQL |
 | Magla Alexandru  | Zombie Service, Resource Service | C#       | PostgreSQL |
 
 ## Diagram
 
 ![PAD architecture](docs/images/diagram.png)
+
+## Running the Stack
+
+Everything runs from the Compose file in this repository. It pulls prebuilt
+images from Docker Hub rather than building from the submodules, so no service
+source is needed to bring the system up.
+
+### Requirements
+
+Docker with Compose v2. Nothing else.
+
+### Setting up the environment
+
+The Compose file reads every credential from the environment, so none of them
+live in the repository. Copy the templates and fill them in:
+
+```bash
+cp .env.example .env
+```
+
+The Exam and World services are backed by rqlite, which reads its users from a
+JSON file rather than environment variables, so those need one more step:
+
+```bash
+cp secrets/exam-rqlite-users.example.json  secrets/exam-rqlite-users.json
+cp secrets/world-rqlite-users.example.json secrets/world-rqlite-users.json
+```
+
+Replace every `REPLACE_ME` and `change_me` with values of your own. The rqlite
+usernames and passwords have to match between the JSON files and `.env`: the
+file is what the database accepts, and `.env` is what the service sends. See
+[`secrets/README.md`](secrets/README.md).
+
+Neither `.env` nor `secrets/*.json` is tracked; only the templates are.
+
+### Starting it
+
+```bash
+docker compose up -d
+```
+
+Databases come up first and the services wait for them: every database declares
+a health check, and every service `depends_on` it with `condition:
+service_healthy`, so nothing starts talking to a database that is not ready yet.
+
+```bash
+docker compose ps       # what is up, and whether it is healthy
+docker compose logs -f  # follow everything
+docker compose down     # stop, keeping the data
+docker compose down -v  # stop and delete the data as well
+```
+
+### Where the services listen
+
+| Service | URL | Image on Docker Hub | Owner |
+| ------- | --- | ------------------- | ----- |
+| Base | <http://localhost:5076> | [`ion04/base-service`](https://hub.docker.com/r/ion04/base-service) | Vornicescu Ion |
+| Crafting | <http://localhost:5198> | [`ion04/crafting-service`](https://hub.docker.com/r/ion04/crafting-service) | Vornicescu Ion |
+| Zombie | <http://localhost:8081> | [`susanito88/zombie-service`](https://hub.docker.com/r/susanito88/zombie-service) | Magla Alexandru |
+| Resource | <http://localhost:8082> | [`susanito88/resource-service`](https://hub.docker.com/r/susanito88/resource-service) | Magla Alexandru |
+| Exam | <http://localhost:8083> | [`gheorghe2973/exam-service`](https://hub.docker.com/r/gheorghe2973/exam-service) | Gurschi Gheorghe |
+| World | <http://localhost:8084> | [`gheorghe2973/world-service`](https://hub.docker.com/r/gheorghe2973/world-service) | Gurschi Gheorghe |
+| Player | <http://localhost:8085> | [`adrianburduja/player-service`](https://hub.docker.com/r/adrianburduja/player-service) | Burduja Adrian |
+| Game | <http://localhost:8080> | [`adrianburduja/game-service`](https://hub.docker.com/r/adrianburduja/player-service) | Burduja Adrian |
+
+The Compose file pins each image to a version tag, so `docker compose up` always
+brings up the same build rather than whatever `latest` happens to be.
+
+Each exposes `GET /api/status` as a health check. The database ports are bound
+to `127.0.0.1` only, so they are reachable for debugging but not from the
+network.
+
+### Testing it
+
+The Postman collections in [`collections/`](collections/) target these ports.
+From the terminal:
+
+```bash
+npx newman run collections/exam-service/exam-service.postman_collection.json \
+  -e collections/exam-service/exam-service.local.postman_environment.json
+```
 
 # Service Boundaries
 
@@ -733,6 +814,50 @@ Success Response (200 OK):
 }
 ```
 
+#### Cancel an Exam Attempt
+
+`DELETE /api/exams/attempts/{attempt_id}` Description: Cancels an attempt that is still in progress, for when the encounter ends before the player finishes. A cancelled attempt does not count against the course's attempt limit.
+
+Success Response (204 No Content): no body.
+
+Error Responses: `404 Not Found` — unknown attempt. `409 Conflict` — the attempt was already submitted.
+
+#### Service Status
+
+`GET /api/status` Description: Health check. Used by the other services and by the Compose health check.
+
+Success Response (200 OK):
+
+```json
+{ "service": "exam", "status": "ok", "uptime_seconds": 1234 }
+```
+
+#### Endpoint Index
+
+`GET /api` Description: Lists every endpoint the service serves, grouped, with a one-line summary each. The index is generated from the same table the routes are registered from, so it cannot drift from what the service does. The root path redirects here.
+
+Success Response (200 OK):
+
+```json
+{
+	"service": "exam",
+	"description": "Owns exam definitions, the question bank, attempts, scores, academic progress and achievements.",
+	"repository": "https://github.com/Gheorghe2973/exam-service",
+	"groups": [
+		{
+			"group": "Exam attempts",
+			"endpoints": [
+				{ "method": "POST", "path": "/api/exams/attempts", "summary": "Start an attempt, idempotent by encounter_id" }
+			]
+		}
+	]
+}
+```
+
+#### Administrative Endpoints
+
+The service also exposes CRUD over the data it owns: courses (`/api/courses`), the question bank (`/api/courses/{course_id}/questions` and `/api/questions/{question_id}`) and the achievement catalogue (`/api/achievements`). No other service calls these — they exist to seed and maintain the exam content — so they are listed at `GET /api` rather than spelled out here.
+
 ## World Service
 
 Owns the persistent campus map, room types, resource node placement, zombie spawn
@@ -900,6 +1025,38 @@ Success Response (201 Created):
 
 Success Response (200 OK): the section was already unlocked, `already_unlocked` is `true`.
 
+#### Consume `exam_passed`
+
+`POST /api/events/exam-passed` Description: Delivery endpoint for the Exam Service's `exam_passed` event. It stands in for the broker subscription until one exists, and takes the event payload documented under [Events](#events) unchanged.
+
+The event names no world, because which campus a passed exam expands is the World Service's decision rather than the Exam Service's. `DEFAULT_WORLD_ID` picks it.
+
+Applying it is idempotent by `attempt_id`, which is stored as the unlock trigger, so a redelivered event expands nothing a second time.
+
+Success Response (202 Accepted): this delivery generated the section.
+
+```json
+{
+	"event_id": "event-uuid-701",
+	"attempt_id": "attempt-uuid-001",
+	"world_id": "world-uuid-100",
+	"outcome": "unlocked",
+	"section_id": "section-uuid-302"
+}
+```
+
+Success Response (200 OK): `outcome` is `already_applied` when the trigger had been seen before, or `ignored` when the course expands no section. Both acknowledge the event — passing an exam that opens no wing is ordinary, and rejecting it would make a publisher redeliver something that can never succeed.
+
+Error Responses: `400 Bad Request` — the payload is missing `attempt_id` or `course_id`, so it can never apply. `5xx` — something transient failed and redelivering is worth it.
+
+#### Endpoint Index
+
+`GET /api` Description: Lists every endpoint the service serves, grouped, with a one-line summary each. Generated from the same table the routes are registered from, so it cannot drift from what the service does. The root path redirects here.
+
+#### Administrative Endpoints
+
+The service also exposes CRUD over the map it owns: worlds (`/api/worlds`), sections (`/api/worlds/{world_id}/sections` and `/api/sections/{section_id}`), rooms, resource nodes and spawn points. No other service calls these — they exist to author and maintain the campus — so they are listed at `GET /api` rather than spelled out here.
+
 #### Service Status
 
 `GET /api/status` Description: Health check.
@@ -913,6 +1070,39 @@ Success Response (200 OK):
 ---
 
 ## Events
+
+### How they travel today
+
+Until the message broker lands, the events below are delivered over HTTP: the
+publisher POSTs the payload to whoever subscribed to the topic, and the
+subscribers are configured rather than discovered. The payloads and the
+idempotency keys are already the agreed ones, so introducing a broker later
+changes the transport and nothing else.
+
+| Topic | Published by | Consumed by | Delivery endpoint |
+| ----- | ------------ | ----------- | ----------------- |
+| `exam_passed` | Exam Service | World Service | `POST /api/events/exam-passed` |
+| `achievement_unlocked` | Exam Service | Player Service | not wired yet |
+| `section_unlocked` | World Service | Resource Service, Game Service | not wired yet |
+
+Subscribers are set per topic through the environment, as a comma-separated
+list of URLs, so a topic can reach several services:
+
+| Service | Variable |
+| ------- | -------- |
+| Exam | `EXAM_PASSED_SUBSCRIBERS`, `ACHIEVEMENT_UNLOCKED_SUBSCRIBERS` |
+| World | `SECTION_UNLOCKED_SUBSCRIBERS` |
+
+A topic with no subscribers is logged and dropped, so a service runs on its own
+while the others are being built. Publishing never blocks the response that
+caused it: a submitted exam returns its score immediately and the events go out
+behind it.
+
+One difference from a real broker is worth stating plainly. Delivery here is
+best-effort: a consumer that is down means the event is lost, where a broker
+would hold it and retry. What is already in place is the part that makes the
+retry safe when it arrives — every event carries a key its consumer deduplicates
+by, so the same event can be delivered twice without a second effect.
 
 #### `exam_passed`
 
@@ -1052,6 +1242,14 @@ Success Response (201 Created):
 
 Error Responses: `422 Unprocessable Entity` - invalid stats or unsupported ability.
 
+#### Update a Zombie Type
+
+`PUT /api/zombies/types/{zombie_type_id}` replaces the type's configuration using the same fields as creation, including the optional `active` flag (defaults to `true`). Returns `200 OK` with the updated type, `404 Not Found` for an unknown type, or `422 Unprocessable Entity` for invalid data.
+
+#### Delete a Zombie Type
+
+`DELETE /api/zombies/types/{zombie_type_id}` returns `204 No Content` on deletion or `404 Not Found` for an unknown type.
+
 #### Service Status
 
 `GET /api/status` Description: Health check.
@@ -1061,6 +1259,12 @@ Success Response (200 OK):
 ```json
 { "service": "zombie", "status": "ok", "uptime_seconds": 1234 }
 ```
+
+### Deployment and testing
+
+The shared Compose file runs `susanito88/zombie-service:1.0.0` at `http://localhost:8081` with its own PostgreSQL database and persistent volume. It sets `Database__ApplyMigrationsOnStartup: "true"`, so EF Core applies migrations before the API starts; no manual table creation is needed on a fresh database.
+
+Import the [Zombie Postman collection](collections/zombie-service/zombie-service.postman_collection.json) and run its requests in collection order. Its `baseUrl` defaults to `http://localhost:8081`; the collection generates identifiers for the run. It covers type CRUD and validation. Game Service still owns live zombie instances and spawning; these requests exercise the configuration API directly.
 
 ## Resource Service
 
@@ -1093,6 +1297,32 @@ Success Response (200 OK):
 	]
 }
 ```
+
+#### List Resource Nodes
+
+`GET /api/resource-nodes` returns `200 OK` with `count` and a `resource_nodes` array. The list includes unavailable nodes; fetching an unavailable node individually returns `404 Not Found`.
+
+#### Create and Update Resource Nodes
+
+`POST /api/resource-nodes` creates a node; `PUT /api/resource-nodes/{node_id}` updates one. Both accept:
+
+```json
+{
+    "node_id": "node-uuid-410",
+    "resource_type": "metal",
+    "quantity": 18,
+    "max_capacity": 50,
+    "available": true
+}
+```
+
+Supported resource types are `wood`, `metal`, `paper`, and `food`. Capacity must be positive and quantity must be between zero and capacity. For updates, `node_id` must match the URL.
+
+Creation returns `201 Created`; updates return `200 OK`, both with the node state. Invalid data returns `422 Unprocessable Entity`, duplicate creation returns `409 Conflict`, and updating an unknown node returns `404 Not Found`. These administrative endpoints prepare economy data for testing; World Service still owns physical node placement.
+
+#### Delete a Resource Node
+
+`DELETE /api/resource-nodes/{node_id}` returns `204 No Content` on deletion or `404 Not Found` for an unknown node.
 
 #### Get Resource Node State
 
@@ -1174,6 +1404,22 @@ Success Response (200 OK):
 
 Error Responses: `409 Conflict` - transaction already applied. `422 Unprocessable Entity` - insufficient resources.
 
+#### Receive a Section Unlocked Event
+
+`POST /api/events/section-unlocked` accepts the `section_unlocked` payload documented in [Events](#events). It validates the node-to-room references and creates the resource nodes in one database transaction. Success returns `200 OK`:
+
+```json
+{
+    "event_id": "event-uuid-703",
+    "applied": true,
+    "nodes_created": 1
+}
+```
+
+A previously applied `event_id` or an existing node ID returns `409 Conflict`; an invalid payload returns `422 Unprocessable Entity`. A failed operation does not partially create nodes. Because the event contract has no starting stock or capacity fields, new nodes currently use placeholder values of quantity `0` and capacity `50`.
+
+This HTTP endpoint is available for simulated World events through Postman. Automatic World-to-Resource delivery is not configured in the shared Compose file: `SECTION_UNLOCKED_SUBSCRIBERS` is currently empty.
+
 #### Service Status
 
 `GET /api/status` Description: Health check.
@@ -1183,6 +1429,12 @@ Success Response (200 OK):
 ```json
 { "service": "resource", "status": "ok", "uptime_seconds": 1234 }
 ```
+
+### Deployment and testing
+
+The shared Compose file runs `susanito88/resource-service:1.0.0` at `http://localhost:8082` with its own PostgreSQL database and persistent volume. It sets `Database__ApplyMigrationsOnStartup: "true"`, so EF Core applies migrations before the API starts; no manual table creation is needed on a fresh database.
+
+Import the [Resource Postman collection](collections/resource-service/resource-service.postman_collection.json) and run its requests in collection order. Its `baseUrl` defaults to `http://localhost:8082`; the collection generates identifiers for the run. It covers node CRUD, gathering, consumption, duplicate operations, validation, and simulated section-unlocked events. These calls simulate requests from peer services; they do not demonstrate full live integration with Game, Crafting, Base, or World. Player IDs are accepted without checking Player Service.
 
 ## Base Service
 
@@ -1418,19 +1670,22 @@ Success Response (200 OK):
 
 \+ Goroutines enable small but frequent updates to the state in an concurrent context. Satisfies updating players Progression via calls from various services.
 
-\+ Has battle tested libraries for working with Sqlite. Satisfies the requirement of having persistent storage for player's information.
+\+ Has battle tested libraries for working with SQL. Satisfies the requirement of having persistent storage for player's information.
 
 \- Does not provide automatic/guaranteed protections against data races. Dissatisfies the CRUD heavy nature of the service.
 
-### Sqlite:
+### rqlite:
 
-\+ Zero-config, serverless engine. No separate database process to run or coordinate in the Player Service's Docker image, keeping deployment simple.
+\+ Raft-replicated cluster — the database survives a node going down, giving horizontal fault-tolerance that a single embedded database can't.
 
-\+ Relational model with joins fits Player Service's data shape directly. Player <-> friends <-> inventory <-> trades relationships are very well modeled by SQL.
+\+ SQL/relational model with full ACID transactions. The join-heavy player↔friends↔inventory↔trades shape and the atomic trade requirement both map directly onto standard SQL.
 
-\+ ACID transactions give the atomic trade requirement a built-in mechanism. Perform the updates in one transaction rather than building atomicity by hand.
+\+ HTTP API — no database driver or C library dependency, just standard HTTP calls from Go.
 
-\- Single-writer lock: writes serialize regardless of how many goroutines are handling requests concurrently. The progression endpoint gets called frequently by Game, Exam and Crafting Service under load, those writes queue up despite the app-layer concurrency.
+\- Writes funnel through a single Raft leader node — serialized, with a network/consensus round-trip added on every write.
+
+\- As deployed (one rqlite container per service, no replica nodes), the cluster has no quorum to fail over to. All of the network/consensus overhead is paid on every write without the fault-tolerance benefit being realized.
+
 
 ## Game Service
 
@@ -1446,15 +1701,15 @@ Success Response (200 OK):
 
 \- Goroutines/timers tied to a session must be explicitly cancelled (`context.Context`) on disconnect or session end. Risks leaking goroutines.
 
-### Sqlite:
+### rqlite:
 
-\+ ACID transactions matter for anything Game Service needs to persist across restarts. Enables recovering in-progress session/timer state after a crash, or writing a finished session's outcome to history.
+\+ Cluster-level durability for session history and results that must survive a restart.
 
-\+ Zero-config, serverless. Same deployment as the rest of the stack.
+\+ HTTP API, no CGO or driver dependency.
 
-\- Single-writer lock. If the workload becomes too big this can become a bottleneck.
+\- Every write that does hit rqlite still costs a network round-trip and Raft commit before it's acknowledged. Since only the genuinely durable data (session history, results) goes through it, this cost is paid rarely rather than on every action — but it's still real overhead on the writes that do occur, compared to a local write.
 
-\- Most of what Game Service holds (active session/timer state) is short-lived. Only the state that truly needs to persist even after shutdowns of the system need to be stored(session history, lobbies, results, etc. ).
+\- Same single-node problem as Player Service: no quorum means no actual fail-over benefit is being realized from the replication model.
 
 ## Exam Service
 
@@ -1470,15 +1725,21 @@ Success Response (200 OK):
 
 \- No mature ORM. All SQL is written by hand.
 
-### SQLite:
+### rqlite:
 
-\+ Serializable transactions by default. Satisfies computing the score, closing the attempt and recording achievements atomically.
+\+ SQLite's dialect behind a network server. Satisfies the requirement of a DBMS running in its own container and reached over the network, which embedded SQLite cannot meet.
 
-\+ Data is small and bounded: a static question bank plus one semester of attempts. Satisfies the per-service database requirement at zero operational cost.
+\+ Statements batched into one request apply atomically. Satisfies closing the attempt, storing the score and recording achievements together.
 
-\- Single writer. Concurrent submits serialize, mitigated with WAL mode.
+\+ Data is small and bounded: a static question bank plus one semester of attempts. Satisfies the per-service database requirement without operational weight.
 
-\- No horizontal scaling. A later replication requirement would force a migration.
+\+ Raft replication is built in. A later high-availability requirement means adding nodes, not migrating.
+
+\- No interactive transactions: `BEGIN`/`COMMIT` across requests is undefined. Every multi-step write either fits in one batch or is made idempotent instead, which is why attempts are keyed by `encounter_id`.
+
+\- One node serves exactly one database, so the service carries its own rqlite container.
+
+\- The Go client is not `database/sql`, so the repository layer departs from the usual Go idiom.
 
 ## World Service
 
@@ -1494,17 +1755,21 @@ Success Response (200 OK):
 
 \- Nested map responses are tedious to build without record syntax.
 
-### SQLite:
+### rqlite:
 
-\+ The map is read-heavy and write-rare, changing only on unlock. The single-writer limit costs us nothing here.
+\+ SQLite's dialect behind a network server. Satisfies the requirement of a DBMS running in its own container and reached over the network, which embedded SQLite cannot meet.
 
-\+ WAL mode keeps readers unblocked during a write. Satisfies serving queries while the map expands.
+\+ The map is read-heavy and write-rare, changing only on unlock. Tunable read consistency lets map queries be served without paying for the strictest guarantee on every tick.
 
-\+ Rooms, adjacency, nodes and spawn points insert in one transaction keyed by `trigger_id`. Satisfies idempotent event consumption.
+\+ A section's rooms, adjacency, nodes and spawn points insert as one batched request, applied atomically and keyed by `trigger_id`. Satisfies idempotent event consumption.
+
+\+ Raft replication is built in. A later high-availability requirement means adding nodes, not migrating.
+
+\- No interactive transactions: `BEGIN`/`COMMIT` across requests is undefined. Unlocking is written as a single batch instead, and replays are caught by the stored `trigger_id`.
+
+\- One node serves exactly one database, so the service carries its own rqlite container.
 
 \- No graph traversal. Pathfinding, if needed later, lives in application code.
-
-ion to a server-based database.
 
 ## Base Service
 
