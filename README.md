@@ -75,7 +75,8 @@ docker compose down -v  # stop and delete the data as well
 | Resource | <http://localhost:8082> | [`susanito88/resource-service`](https://hub.docker.com/r/susanito88/resource-service) | Magla Alexandru |
 | Exam | <http://localhost:8083> | [`gheorghe2973/exam-service`](https://hub.docker.com/r/gheorghe2973/exam-service) | Gurschi Gheorghe |
 | World | <http://localhost:8084> | [`gheorghe2973/world-service`](https://hub.docker.com/r/gheorghe2973/world-service) | Gurschi Gheorghe |
-
+| Player | <http://localhost:8085> | [`adrianburduja/player-service`](https://hub.docker.com/r/adrianburduja/player-service) | Burduja Adrian |
+| Game | <http://localhost:8080> | [`adrianburduja/game-service`](https://hub.docker.com/r/adrianburduja/player-service) | Burduja Adrian |
 The Compose file pins each image to a version tag, so `docker compose up` always
 brings up the same build rather than whatever `latest` happens to be.
 
