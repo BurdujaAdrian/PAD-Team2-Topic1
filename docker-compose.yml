@@ -163,7 +163,7 @@ services:
             start_period: 5s
 
     game-service:
-        image: adrianburduja/game-service:1.0.0
+        image: adrianburduja/game-service:0.0.1
         container_name: cpr-game-service
         restart: unless-stopped
         depends_on:
@@ -193,7 +193,7 @@ services:
             start_period: 5s
 
     player-service:
-        image: adrianburduja/player-service:1.0.0
+        image: adrianburduja/player-service:0.0.1
         container_name: cpr-player-service
         restart: unless-stopped
         depends_on:
