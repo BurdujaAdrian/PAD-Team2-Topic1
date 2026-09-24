@@ -243,7 +243,13 @@ services:
             - "127.0.0.1:4001:4001"
         volumes:
             - exam_rqlite_data:/rqlite/file
-            - ./secrets/exam-rqlite-users.json:/auth/users.json:ro
+        configs:
+            # A config rather than a bind mount on purpose. With a bind mount,
+            # Docker silently creates a directory when the source file is
+            # missing, and rqlite then fails with "is a directory". A config
+            # refuses to start the container and names the missing file.
+            - source: exam_rqlite_users
+              target: /auth/users.json
         healthcheck:
             test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
             interval: 10s
@@ -285,7 +291,13 @@ services:
             - "127.0.0.1:4003:4001"
         volumes:
             - world_rqlite_data:/rqlite/file
-            - ./secrets/world-rqlite-users.json:/auth/users.json:ro
+        configs:
+            # A config rather than a bind mount on purpose. With a bind mount,
+            # Docker silently creates a directory when the source file is
+            # missing, and rqlite then fails with "is a directory". A config
+            # refuses to start the container and names the missing file.
+            - source: world_rqlite_users
+              target: /auth/users.json
         healthcheck:
             test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
             interval: 10s
@@ -305,6 +317,12 @@ services:
         depends_on:
             world-db:
                 condition: service_healthy
+
+configs:
+    exam_rqlite_users:
+        file: ./secrets/exam-rqlite-users.json
+    world_rqlite_users:
+        file: ./secrets/world-rqlite-users.json
 
 volumes:
     base_pgdata:

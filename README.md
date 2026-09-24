@@ -46,7 +46,16 @@ usernames and passwords have to match between the JSON files and `.env`: the
 file is what the database accepts, and `.env` is what the service sends. See
 [`secrets/README.md`](secrets/README.md).
 
-Neither `.env` nor `secrets/*.json` is tracked; only the templates are.
+Neither `.env` nor `secrets/*.json` is tracked; only the templates are. Skipping
+this step is the most common way a fresh clone fails to start:
+
+```
+Error response from daemon: invalid mount config for type "bind":
+bind source path does not exist: .../secrets/exam-rqlite-users.json
+```
+
+That message names the file it wants. Copy the template, fill it in, and run
+`docker compose up -d` again.
 
 ### Starting it
 
