@@ -145,13 +145,25 @@ services:
     # Game Service
     # ---------------------------------------------------------------------
     game-db:
-        image: rqlite/rqlite:latest
+        image: rqlite/rqlite:10.3.6
         container_name: cpr-game-db
         restart: unless-stopped
+        # Both advertised addresses are pinned to the service name. rqlite
+        # stores its Raft address in the volume, and the default is the
+        # container hostname, which Compose changes on every recreation: the
+        # stored address then points at a host that no longer exists, the node
+        # never reaches a stable configuration, /readyz answers 503 and the
+        # service waiting on it never starts.
+        command:
+            - -node-id=game
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=game-db:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=game-db:4002
         volumes:
             - game-data:/rqlite/file
         ports:
-            - "127.0.0.1:4001:4001"   # HTTP API — only needed on the host for local debugging
+            - "127.0.0.1:4004:4001"   # HTTP API — only needed on the host for local debugging
         healthcheck:
             test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
             interval: 3s
@@ -175,9 +187,21 @@ services:
     # Player Service
     # ---------------------------------------------------------------------
     player-db:
-        image: rqlite/rqlite:latest
+        image: rqlite/rqlite:10.3.6
         container_name: cpr-player-db
         restart: unless-stopped
+        # Both advertised addresses are pinned to the service name. rqlite
+        # stores its Raft address in the volume, and the default is the
+        # container hostname, which Compose changes on every recreation: the
+        # stored address then points at a host that no longer exists, the node
+        # never reaches a stable configuration, /readyz answers 503 and the
+        # service waiting on it never starts.
+        command:
+            - -node-id=player
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=player-db:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=player-db:4002
         volumes:
             - player-data:/rqlite/file
         ports:
@@ -199,7 +223,8 @@ services:
         environment:
             - DB_DSN=http://player-db:4001
         ports:
-            - "8081:8080"
+            - "8085:8080"
+
     # ---------------------------------------------------------------------
     # Exam Service
     # ---------------------------------------------------------------------
