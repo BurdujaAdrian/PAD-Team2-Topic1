@@ -145,6 +145,61 @@ services:
                 condition: service_healthy
 
     # ---------------------------------------------------------------------
+    # Game Service
+    # ---------------------------------------------------------------------
+    game-db:
+        image: rqlite/rqlite:latest
+        container_name: cpr-game-db
+        restart: unless-stopped
+        volumes:
+            - game-data:/rqlite/file
+        healthcheck:
+            test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
+            interval: 3s
+            timeout: 2s
+            retries: 10
+            start_period: 5s
+
+    game-service:
+        image: adrianburduja/game-service:1.0.0
+        container_name: cpr-game-service
+        restart: unless-stopped
+        depends_on:
+            game-db:
+                condition: service_healthy
+        environment:
+            - DB_DSN=http://game-db:4001
+        ports:
+            - "8080:8080"
+
+    # ---------------------------------------------------------------------
+    # Player Service
+    # ---------------------------------------------------------------------
+    player-db:
+        image: rqlite/rqlite:latest
+        container_name: cpr-player-db
+        restart: unless-stopped
+        volumes:
+            - player-data:/rqlite/file
+        healthcheck:
+            test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
+            interval: 3s
+            timeout: 2s
+            retries: 10
+            start_period: 5s
+
+    player-service:
+        image: adrianburduja/player-service:1.0.0
+        container_name: cpr-player-service
+        restart: unless-stopped
+        depends_on:
+            player-db:
+                condition: service_healthy
+        environment:
+            - DB_DSN=http://player-db:4001
+        ports:
+            - "8085:8080"
+    # ---------------------------------------------------------------------
     # Exam Service
     # ---------------------------------------------------------------------
     exam-db:
@@ -220,15 +275,12 @@ services:
             world-db:
                 condition: service_healthy
 
-    # ---------------------------------------------------------------------
-    # TODO: Player Service and Game Service, with their database containers,
-    # will be added here once ready.
-    # ---------------------------------------------------------------------
-
 volumes:
     base_pgdata:
     crafting_pgdata:
     zombie_pgdata:
     resource_pgdata:
+    game-data:
+    player-data:
     exam_rqlite_data:
     world_rqlite_data:
