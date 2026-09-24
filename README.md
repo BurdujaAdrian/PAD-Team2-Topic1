@@ -67,14 +67,17 @@ docker compose down -v  # stop and delete the data as well
 
 ### Where the services listen
 
-| Service | URL | Owner |
-| ------- | --- | ----- |
-| Base | <http://localhost:5076> | Vornicescu Ion |
-| Crafting | <http://localhost:5198> | Vornicescu Ion |
-| Zombie | <http://localhost:8081> | Magla Alexandru |
-| Resource | <http://localhost:8082> | Magla Alexandru |
-| Exam | <http://localhost:8083> | Gurschi Gheorghe |
-| World | <http://localhost:8084> | Gurschi Gheorghe |
+| Service | URL | Image on Docker Hub | Owner |
+| ------- | --- | ------------------- | ----- |
+| Base | <http://localhost:5076> | [`ion04/base-service`](https://hub.docker.com/r/ion04/base-service) | Vornicescu Ion |
+| Crafting | <http://localhost:5198> | [`ion04/crafting-service`](https://hub.docker.com/r/ion04/crafting-service) | Vornicescu Ion |
+| Zombie | <http://localhost:8081> | [`susanito88/zombie-service`](https://hub.docker.com/r/susanito88/zombie-service) | Magla Alexandru |
+| Resource | <http://localhost:8082> | [`susanito88/resource-service`](https://hub.docker.com/r/susanito88/resource-service) | Magla Alexandru |
+| Exam | <http://localhost:8083> | [`gheorghe2973/exam-service`](https://hub.docker.com/r/gheorghe2973/exam-service) | Gurschi Gheorghe |
+| World | <http://localhost:8084> | [`gheorghe2973/world-service`](https://hub.docker.com/r/gheorghe2973/world-service) | Gurschi Gheorghe |
+
+The Compose file pins each image to a version tag, so `docker compose up` always
+brings up the same build rather than whatever `latest` happens to be.
 
 Each exposes `GET /api/status` as a health check. The database ports are bound
 to `127.0.0.1` only, so they are reachable for debugging but not from the
