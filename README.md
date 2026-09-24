@@ -6,7 +6,7 @@ PAD Team 2's Common Public Repository
 | Name             | Services                         | Language | Database   |
 | ---------------- | -------------------------------- | -------- | ---------- |
 | Burduja Adrian   | Player Service, Game Service     | Go       | SQLite     |
-| Gurschi Gheorghe | Exam Service, World Service      | Go       | SQLite     |
+| Gurschi Gheorghe | Exam Service, World Service      | Go       | rqlite     |
 | Vornicescu Ion   | Base Service, Crafting Service   | C#       | PostgreSQL |
 | Magla Alexandru  | Zombie Service, Resource Service | C#       | PostgreSQL |
 
@@ -1549,15 +1549,21 @@ Success Response (200 OK):
 
 \- No mature ORM. All SQL is written by hand.
 
-### SQLite:
+### rqlite:
 
-\+ Serializable transactions by default. Satisfies computing the score, closing the attempt and recording achievements atomically.
+\+ SQLite's dialect behind a network server. Satisfies the requirement of a DBMS running in its own container and reached over the network, which embedded SQLite cannot meet.
 
-\+ Data is small and bounded: a static question bank plus one semester of attempts. Satisfies the per-service database requirement at zero operational cost.
+\+ Statements batched into one request apply atomically. Satisfies closing the attempt, storing the score and recording achievements together.
 
-\- Single writer. Concurrent submits serialize, mitigated with WAL mode.
+\+ Data is small and bounded: a static question bank plus one semester of attempts. Satisfies the per-service database requirement without operational weight.
 
-\- No horizontal scaling. A later replication requirement would force a migration.
+\+ Raft replication is built in. A later high-availability requirement means adding nodes, not migrating.
+
+\- No interactive transactions: `BEGIN`/`COMMIT` across requests is undefined. Every multi-step write either fits in one batch or is made idempotent instead, which is why attempts are keyed by `encounter_id`.
+
+\- One node serves exactly one database, so the service carries its own rqlite container.
+
+\- The Go client is not `database/sql`, so the repository layer departs from the usual Go idiom.
 
 ## World Service
 
@@ -1573,17 +1579,21 @@ Success Response (200 OK):
 
 \- Nested map responses are tedious to build without record syntax.
 
-### SQLite:
+### rqlite:
 
-\+ The map is read-heavy and write-rare, changing only on unlock. The single-writer limit costs us nothing here.
+\+ SQLite's dialect behind a network server. Satisfies the requirement of a DBMS running in its own container and reached over the network, which embedded SQLite cannot meet.
 
-\+ WAL mode keeps readers unblocked during a write. Satisfies serving queries while the map expands.
+\+ The map is read-heavy and write-rare, changing only on unlock. Tunable read consistency lets map queries be served without paying for the strictest guarantee on every tick.
 
-\+ Rooms, adjacency, nodes and spawn points insert in one transaction keyed by `trigger_id`. Satisfies idempotent event consumption.
+\+ A section's rooms, adjacency, nodes and spawn points insert as one batched request, applied atomically and keyed by `trigger_id`. Satisfies idempotent event consumption.
+
+\+ Raft replication is built in. A later high-availability requirement means adding nodes, not migrating.
+
+\- No interactive transactions: `BEGIN`/`COMMIT` across requests is undefined. Unlocking is written as a single batch instead, and replays are caught by the stored `trigger_id`.
+
+\- One node serves exactly one database, so the service carries its own rqlite container.
 
 \- No graph traversal. Pathfinding, if needed later, lives in application code.
-
-ion to a server-based database.
 
 ## Base Service
 

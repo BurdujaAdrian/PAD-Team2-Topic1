@@ -146,11 +146,6 @@ services:
 
     # ---------------------------------------------------------------------
     # Exam Service
-    #
-    # Backed by rqlite rather than Postgres: SQLite's engine behind a network
-    # server. Both advertised addresses are pinned to the service name, because
-    # rqlite stores its Raft address in the volume and the default is the
-    # container hostname, which changes every time Compose recreates it.
     # ---------------------------------------------------------------------
     exam-db:
         image: rqlite/rqlite:10.3.6
