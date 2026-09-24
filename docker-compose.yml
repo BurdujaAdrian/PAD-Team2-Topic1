@@ -225,12 +225,16 @@ services:
             retries: 5
 
     exam-api:
-        image: gheorghe2973/exam-service:1.1.0
+        image: gheorghe2973/exam-service:1.2.0
         container_name: cpr-exam-api
         restart: unless-stopped
         environment:
             RQLITE_URL: http://${EXAM_RQLITE_USER}:${EXAM_RQLITE_PASSWORD}@exam-db:4001
             SEED_ON_START: "true"
+            # Where exam_passed goes. A passed exam expands the campus, so the
+            # World Service subscribes. achievement_unlocked belongs to the
+            # Player Service and is wired once that service exposes an endpoint.
+            EXAM_PASSED_SUBSCRIBERS: http://world-api:8080/api/events/exam-passed
         ports:
             - "8083:8080"
         depends_on:
@@ -263,12 +267,16 @@ services:
             retries: 5
 
     world-api:
-        image: gheorghe2973/world-service:1.1.0
+        image: gheorghe2973/world-service:1.2.0
         container_name: cpr-world-api
         restart: unless-stopped
         environment:
             RQLITE_URL: http://${WORLD_RQLITE_USER}:${WORLD_RQLITE_PASSWORD}@world-db:4001
             SEED_ON_START: "true"
+            # section_unlocked goes to the Resource Service, which creates the
+            # economy entries for the new nodes, and to the Game Service, which
+            # invalidates its map cache. Wired once they expose endpoints.
+            SECTION_UNLOCKED_SUBSCRIBERS: ""
         ports:
             - "8084:8080"
         depends_on:
