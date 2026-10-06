@@ -1906,8 +1906,8 @@ PostgreSQL:
 ## Branch structure
 
 - `main` — production/deployable, protected
-- `develop` — integration branch, protected
-- `feature/*`, `fix/*`, `chore/*` — personal work branches, unprotected, branched from and merged back into `develop`
+- `dev` — integration branch, protected
+- `feature/*`, `fix/*`, `chore/*` — personal work branches, unprotected, branched from and merged back into `dev`
 
 ## Ruleset: `main`
 
@@ -1923,12 +1923,12 @@ PostgreSQL:
 | Block force pushes                                  | On                                   |
 | Bypass list                                         | Empty — no one bypasses these rules |
 
-## Ruleset: `develop`
+## Ruleset: `dev`
 
 
 | Setting                                             | Value                     |
 | --------------------------------------------------- | ------------------------- |
-| Target branches                                     | `develop` (by pattern)    |
+| Target branches                                     | `dev` (by pattern)    |
 | Require a pull request before merging               | On — 1 required approval |
 | Dismiss stale approvals on new commits              | On                        |
 | Require approval of the most recent reviewable push | On                        |
@@ -1939,8 +1939,8 @@ PostgreSQL:
 
 ## Merging strategy
 
-- `feature/*`, `fix/*`, `chore/*` → `develop`: **squash and merge**
-- `develop` → `main`: **merge commit** (no squash), keeps release history
+- `feature/*`, `fix/*`, `chore/*` → `dev`: **squash and merge**
+- `dev` → `main`: **merge commit** (no squash), keeps release history
 - Delete the source branch after merge
 
 ## Pull request content
@@ -1966,4 +1966,4 @@ Every PR must include:
 
 - Semantic Versioning (`MAJOR.MINOR.PATCH`)
 - Version bumped and tagged on `main` at release time
-- `develop` stays on the next `-dev` pre-release version between releases
+- `dev` stays on the next `-dev` pre-release version between releases
