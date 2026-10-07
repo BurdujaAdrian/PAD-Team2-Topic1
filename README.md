@@ -61,6 +61,7 @@ docker compose down -v  # stop and delete the data as well
 
 | Service | URL | Image on Docker Hub | Owner |
 | ------- | --- | ------------------- | ----- |
+| **Gateway** | <http://localhost:8000> | [`gheorghe2973/gateway-service`](https://hub.docker.com/r/gheorghe2973/gateway-service) | Gurschi Gheorghe |
 | Base | <http://localhost:5076> | [`ion04/base-service`](https://hub.docker.com/r/ion04/base-service) | Vornicescu Ion |
 | Crafting | <http://localhost:5198> | [`ion04/crafting-service`](https://hub.docker.com/r/ion04/crafting-service) | Vornicescu Ion |
 | Zombie | <http://localhost:8081> | [`susanito88/zombie-service`](https://hub.docker.com/r/susanito88/zombie-service) | Magla Alexandru |
@@ -72,6 +73,10 @@ docker compose down -v  # stop and delete the data as well
 
 The Compose file pins each image to a version tag, so `docker compose up` always
 brings up the same build rather than whatever `latest` happens to be.
+
+The Gateway is the entry point: clients talk to it, and it talks to the eight
+services. The others are listed with their ports because they stay reachable
+for debugging.
 
 Each exposes `GET /api/status` as a health check. The database ports are bound
 to `127.0.0.1` only, so they are reachable for debugging but not from the
