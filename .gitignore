@@ -5,7 +5,3 @@
 .vs/
 .vscode/
 .idea/
-
-# Real credential files. Only the *.example.json templates are committed.
-secrets/*.json
-!secrets/*.example.json

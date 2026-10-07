@@ -238,14 +238,10 @@ services:
             - -http-adv-addr=exam-db:4001
             - -raft-addr=0.0.0.0:4002
             - -raft-adv-addr=exam-db:4002
-            - -auth=/auth/users.json
         ports:
             - "127.0.0.1:4001:4001"
         volumes:
             - exam_rqlite_data:/rqlite/file
-        configs:
-            - source: exam_rqlite_users
-              target: /auth/users.json
         healthcheck:
             test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
             interval: 10s
@@ -257,7 +253,7 @@ services:
         container_name: cpr-exam-api
         restart: unless-stopped
         environment:
-            RQLITE_URL: http://${EXAM_RQLITE_USER}:${EXAM_RQLITE_PASSWORD}@exam-db:4001
+            RQLITE_URL: http://exam-db:4001
             SEED_ON_START: "true"
             EXAM_PASSED_SUBSCRIBERS: http://world-api:8080/api/events/exam-passed
         ports:
@@ -279,14 +275,10 @@ services:
             - -http-adv-addr=world-db:4001
             - -raft-addr=0.0.0.0:4002
             - -raft-adv-addr=world-db:4002
-            - -auth=/auth/users.json
         ports:
             - "127.0.0.1:4003:4001"
         volumes:
             - world_rqlite_data:/rqlite/file
-        configs:
-            - source: world_rqlite_users
-              target: /auth/users.json
         healthcheck:
             test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
             interval: 10s
@@ -298,7 +290,7 @@ services:
         container_name: cpr-world-api
         restart: unless-stopped
         environment:
-            RQLITE_URL: http://${WORLD_RQLITE_USER}:${WORLD_RQLITE_PASSWORD}@world-db:4001
+            RQLITE_URL: http://world-db:4001
             SEED_ON_START: "true"
             SECTION_UNLOCKED_SUBSCRIBERS: ""
         ports:
@@ -306,12 +298,6 @@ services:
         depends_on:
             world-db:
                 condition: service_healthy
-
-configs:
-    exam_rqlite_users:
-        file: ./secrets/exam-rqlite-users.json
-    world_rqlite_users:
-        file: ./secrets/world-rqlite-users.json
 
 volumes:
     base_pgdata:
