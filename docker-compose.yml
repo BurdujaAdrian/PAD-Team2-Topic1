@@ -43,12 +43,15 @@ services:
             retries: 5
 
     base-api:
-        image: ion04/base-service:1.0.0
+        image: ion04/base-service:2.0.0
         container_name: cpr-base-api
         restart: unless-stopped
         environment:
             ASPNETCORE_ENVIRONMENT: Production
             ConnectionStrings__DefaultConnection: Host=base-db;Port=5432;Database=${BASE_POSTGRES_DB};Username=${BASE_POSTGRES_USER};Password=${BASE_POSTGRES_PASSWORD}
+            # Every call to World, Resource and Player goes through the Gateway.
+            # Required: the service refuses to start without it.
+            GATEWAY_URL: http://gateway:8080
         ports:
             - "5076:8080"
         depends_on:
@@ -77,7 +80,7 @@ services:
             retries: 10
 
     crafting-api:
-        image: ion04/crafting-service:1.0.0
+        image: ion04/crafting-service:2.0.0
         container_name: cpr-crafting-api
         restart: unless-stopped
         environment:
@@ -86,6 +89,9 @@ services:
             POSTGRES_PASSWORD: ${CRAFTING_POSTGRES_PASSWORD}
             POSTGRES_HOST: crafting-db
             POSTGRES_PORT: 5432
+            # Every call to Resource, Player and Exam goes through the Gateway.
+            # Required: the service refuses to start without it.
+            GATEWAY_URL: http://gateway:8080
         ports:
             - "5198:8080"
         depends_on:
