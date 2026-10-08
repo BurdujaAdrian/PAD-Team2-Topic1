@@ -18,6 +18,7 @@ services:
             CRAFTING_SERVICE_URL: http://crafting-api:8080
             ZOMBIE_SERVICE_URL: http://zombie-api:8080
             RESOURCE_SERVICE_URL: http://resource-api:8080
+            WS_TICKET_SECRET: ${WS_TICKET_SECRET}
         ports:
             - "8000:8080"
 
@@ -205,6 +206,7 @@ services:
                 condition: service_healthy
         environment:
             - DB_DSN=http://game-db:4001
+            - WS_TICKET_SECRET=${WS_TICKET_SECRET}
         ports:
             - "8086:8080"
 
