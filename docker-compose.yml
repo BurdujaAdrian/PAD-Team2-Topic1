@@ -174,12 +174,6 @@ services:
         image: rqlite/rqlite:10.3.6
         container_name: cpr-game-db
         restart: unless-stopped
-        # Both advertised addresses are pinned to the service name. rqlite
-        # stores its Raft address in the volume, and the default is the
-        # container hostname, which Compose changes on every recreation: the
-        # stored address then points at a host that no longer exists, the node
-        # never reaches a stable configuration, /readyz answers 503 and the
-        # service waiting on it never starts.
         command:
             - -node-id=game
             - -http-addr=0.0.0.0:4001
@@ -198,7 +192,7 @@ services:
             start_period: 5s
 
     game-service:
-        image: adrianburduja/game-service:0.0.1
+        image: adrianburduja/game-service:0.0.2
         container_name: cpr-game-service
         restart: unless-stopped
         depends_on:
@@ -217,12 +211,6 @@ services:
         image: rqlite/rqlite:10.3.6
         container_name: cpr-player-db
         restart: unless-stopped
-        # Both advertised addresses are pinned to the service name. rqlite
-        # stores its Raft address in the volume, and the default is the
-        # container hostname, which Compose changes on every recreation: the
-        # stored address then points at a host that no longer exists, the node
-        # never reaches a stable configuration, /readyz answers 503 and the
-        # service waiting on it never starts.
         command:
             - -node-id=player
             - -http-addr=0.0.0.0:4001
@@ -241,7 +229,7 @@ services:
             start_period: 5s
 
     player-service:
-        image: adrianburduja/player-service:0.0.1
+        image: adrianburduja/player-service:0.0.2
         container_name: cpr-player-service
         restart: unless-stopped
         depends_on:
