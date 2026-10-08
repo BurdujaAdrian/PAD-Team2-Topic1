@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "0d00e639-c503-4307-8f13-57d0e0d9969e",
-    "name": "PAD Team 2 \u2014 World Service",
+    "name": "PAD Team 2 — World Service",
     "description": "World Service (Gurschi Gheorghe, Go). Owns the persistent campus map: rooms, sections, resource node placement, zombie spawn points and section unlock state.\n\n**Running it:** start the service with `go run ./cmd/server` in this repository, then run the whole collection. Every request asserts the status code the contract promises, so a green run means the service still honours it.\n\n**Data:** the service seeds the campus `utm_campus` at boot. The Main Wing is open, the East Wing waits on `math_analysis` and the North Wing on `operating_systems`. The CRUD folders create and delete their own throwaway records, so the seeded campus survives a run.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1118,12 +1118,14 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/resource-nodes/{{tempNodeId}}",
+              "raw": "{{baseUrl}}/api/rooms/{{tempRoomId}}/resource-nodes/{{tempNodeId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
+                "rooms",
+                "{{tempRoomId}}",
                 "resource-nodes",
                 "{{tempNodeId}}"
               ]
@@ -1155,12 +1157,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/resource-nodes/{{tempNodeId}}",
+              "raw": "{{baseUrl}}/api/rooms/{{tempRoomId}}/resource-nodes/{{tempNodeId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
+                "rooms",
+                "{{tempRoomId}}",
                 "resource-nodes",
                 "{{tempNodeId}}"
               ]
@@ -1196,12 +1200,14 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/resource-nodes/{{tempNodeId}}",
+              "raw": "{{baseUrl}}/api/rooms/{{tempRoomId}}/resource-nodes/{{tempNodeId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
+                "rooms",
+                "{{tempRoomId}}",
                 "resource-nodes",
                 "{{tempNodeId}}"
               ]
