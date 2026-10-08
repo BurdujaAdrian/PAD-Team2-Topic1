@@ -12,7 +12,10 @@ PAD Team 2's Common Public Repository
 
 ## Diagram
 
-![PAD architecture](docs/images/diagram.png)
+![PAD architecture](docs/images/diagram.drawio.png)
+
+The file is a draw.io export with the source embedded, so it opens for editing
+at <https://app.diagrams.net> as it is - there is no second file to keep in sync.
 
 ## Running the Stack
 
@@ -33,20 +36,12 @@ live in the repository. Copy the templates and fill them in:
 cp .env.example .env
 ```
 
-The Exam and World services are backed by rqlite, which reads its users from a
-JSON file rather than environment variables, so those need one more step:
+Replace every `change_me` with a value of your own. `.env` is not tracked; only
+the template is.
 
-```bash
-cp secrets/exam-rqlite-users.example.json  secrets/exam-rqlite-users.json
-cp secrets/world-rqlite-users.example.json secrets/world-rqlite-users.json
-```
-
-Replace every `REPLACE_ME` and `change_me` with values of your own. The rqlite
-usernames and passwords have to match between the JSON files and `.env`: the
-file is what the database accepts, and `.env` is what the service sends. See
-[`secrets/README.md`](secrets/README.md).
-
-Neither `.env` nor `secrets/*.json` is tracked; only the templates are.
+The Exam and World databases need nothing here: their rqlite instances are
+bound to `127.0.0.1` and reachable only from inside the Compose network, so
+they run without credentials.
 
 ### Starting it
 
@@ -69,6 +64,7 @@ docker compose down -v  # stop and delete the data as well
 
 | Service | URL | Image on Docker Hub | Owner |
 | ------- | --- | ------------------- | ----- |
+| **Gateway** | <http://localhost:8000> | [`gheorghe2973/gateway-service`](https://hub.docker.com/r/gheorghe2973/gateway-service) | Gurschi Gheorghe |
 | Base | <http://localhost:5076> | [`ion04/base-service`](https://hub.docker.com/r/ion04/base-service) | Vornicescu Ion |
 | Crafting | <http://localhost:5198> | [`ion04/crafting-service`](https://hub.docker.com/r/ion04/crafting-service) | Vornicescu Ion |
 | Zombie | <http://localhost:8081> | [`susanito88/zombie-service`](https://hub.docker.com/r/susanito88/zombie-service) | Magla Alexandru |
@@ -80,6 +76,10 @@ docker compose down -v  # stop and delete the data as well
 
 The Compose file pins each image to a version tag, so `docker compose up` always
 brings up the same build rather than whatever `latest` happens to be.
+
+The Gateway is the entry point: clients talk to it, and it talks to the eight
+services. The others are listed with their ports because they stay reachable
+for debugging.
 
 Each exposes `GET /api/status` as a health check. The database ports are bound
 to `127.0.0.1` only, so they are reachable for debugging but not from the
@@ -1906,8 +1906,8 @@ PostgreSQL:
 ## Branch structure
 
 - `main` — production/deployable, protected
-- `develop` — integration branch, protected
-- `feature/*`, `fix/*`, `chore/*` — personal work branches, unprotected, branched from and merged back into `develop`
+- `dev` — integration branch, protected
+- `feature/*`, `fix/*`, `chore/*` — personal work branches, unprotected, branched from and merged back into `dev`
 
 ## Ruleset: `main`
 
@@ -1923,12 +1923,12 @@ PostgreSQL:
 | Block force pushes                                  | On                                   |
 | Bypass list                                         | Empty — no one bypasses these rules |
 
-## Ruleset: `develop`
+## Ruleset: `dev`
 
 
 | Setting                                             | Value                     |
 | --------------------------------------------------- | ------------------------- |
-| Target branches                                     | `develop` (by pattern)    |
+| Target branches                                     | `dev` (by pattern)    |
 | Require a pull request before merging               | On — 1 required approval |
 | Dismiss stale approvals on new commits              | On                        |
 | Require approval of the most recent reviewable push | On                        |
@@ -1939,8 +1939,8 @@ PostgreSQL:
 
 ## Merging strategy
 
-- `feature/*`, `fix/*`, `chore/*` → `develop`: **squash and merge**
-- `develop` → `main`: **merge commit** (no squash), keeps release history
+- `feature/*`, `fix/*`, `chore/*` → `dev`: **squash and merge**
+- `dev` → `main`: **merge commit** (no squash), keeps release history
 - Delete the source branch after merge
 
 ## Pull request content
@@ -1966,4 +1966,4 @@ Every PR must include:
 
 - Semantic Versioning (`MAJOR.MINOR.PATCH`)
 - Version bumped and tagged on `main` at release time
-- `develop` stays on the next `-dev` pre-release version between releases
+- `dev` stays on the next `-dev` pre-release version between releases

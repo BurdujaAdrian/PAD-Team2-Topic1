@@ -2,7 +2,7 @@
     "info": {
         "_postman_id": "6f0c1f0e-5b1a-4a53-9a55-3c6a8f5b7d21",
         "name": "Base Service",
-        "description": "Test collection for the Base Service (`services/base-service`).\n\nRun the folders top to bottom (or use the Collection Runner). **Bases > Create Base** creates a fresh base and stores its ids as collection variables that the later requests use; **Cleanup** deletes it.\n\nVariable `baseUrl` defaults to `http://localhost:5076` (the `dotnet run` port).",
+        "description": "Test collection for the Base Service (`services/base-service`).\n\nBase no longer runs on mocks: reinforcing asks World Service whether the room is unlocked, reinforcing and upgrading spend the player's resources in Resource Service, and Kiki grants its reward through Player Service - all through the Gateway. The whole stack therefore has to be running (`docker compose up -d` in the CPR).\n\nRun the folders top to bottom (or use the Collection Runner). **Setup** registers a player and gives it resources, **Bases > Create Base** creates a base whose ids the later requests use, and **Cleanup** deletes everything the run created.\n\nVariables: `baseUrl` is Base Service itself (`http://localhost:5076`); `gatewayUrl` is the Gateway (`http://localhost:8000`), used for the requests that belong to other services. `baseUrl` can be pointed at the Gateway too - every request then goes through it - except that **Status** will fail, because the Gateway answers `/api/status` itself.",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "item": [
@@ -51,21 +51,334 @@
             ]
         },
         {
-            "name": "Bases",
-            "description": "Create, read and update a base. Run the requests in order: Create Base stores `baseId`, `roomId` and `facilityId` as collection variables for every request after it.",
+            "name": "Setup",
+            "description": "Creates, in the other services, what the base actions depend on: a player, and resources for it. Sent to the Gateway.",
             "item": [
                 {
-                    "name": "Create Base",
+                    "name": "Register Player",
                     "event": [
                         {
                             "listen": "prerequest",
                             "script": {
                                 "type": "text/javascript",
                                 "exec": [
-                                    "pm.collectionVariables.set(\"playerId\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                                    "pm.collectionVariables.set(\"runId\", pm.variables.replaceIn(\"{{$guid}}\").substring(0, 8));"
                                 ]
                             }
                         },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"player_id is returned\", () => pm.expect(body.player_id).to.be.a(\"string\").and.not.empty);",
+                                    "pm.collectionVariables.set(\"playerId\", body.player_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{gatewayUrl}}/api/players",
+                            "host": [
+                                "{{gatewayUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players"
+                            ]
+                        },
+                        "description": "Registers the player that will own the base. Player Service, through the Gateway.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"base_test_{{runId}}\",\n    \"email\": \"base_test_{{runId}}@utm.md\",\n    \"password\": \"hunter2\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Wood Node",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{gatewayUrl}}/api/resource-nodes",
+                            "host": [
+                                "{{gatewayUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-nodes"
+                            ]
+                        },
+                        "description": "A resource node for the player to gather from. Resource Service, through the Gateway.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"node_id\": \"base-test-wood-{{runId}}\",\n    \"resource_type\": \"wood\",\n    \"quantity\": 60,\n    \"max_capacity\": 100,\n    \"available\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Metal Node",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{gatewayUrl}}/api/resource-nodes",
+                            "host": [
+                                "{{gatewayUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-nodes"
+                            ]
+                        },
+                        "description": "A resource node for the player to gather from. Resource Service, through the Gateway.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"node_id\": \"base-test-metal-{{runId}}\",\n    \"resource_type\": \"metal\",\n    \"quantity\": 60,\n    \"max_capacity\": 100,\n    \"available\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Paper Node",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{gatewayUrl}}/api/resource-nodes",
+                            "host": [
+                                "{{gatewayUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-nodes"
+                            ]
+                        },
+                        "description": "A resource node for the player to gather from. Resource Service, through the Gateway.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"node_id\": \"base-test-paper-{{runId}}\",\n    \"resource_type\": \"paper\",\n    \"quantity\": 30,\n    \"max_capacity\": 100,\n    \"available\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Gather Wood",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"player now holds 60 wood\", () => pm.expect(pm.response.json().player_quantity).to.eql(60));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{gatewayUrl}}/api/resource-transactions",
+                            "host": [
+                                "{{gatewayUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-transactions"
+                            ]
+                        },
+                        "description": "Gives the player the resources the reinforce and upgrade below will spend.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"action_id\": \"base-test-gather-wood-{{runId}}\",\n    \"player_id\": \"{{playerId}}\",\n    \"node_id\": \"base-test-wood-{{runId}}\",\n    \"resource_type\": \"wood\",\n    \"quantity\": 60\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Gather Metal",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"player now holds 60 metal\", () => pm.expect(pm.response.json().player_quantity).to.eql(60));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{gatewayUrl}}/api/resource-transactions",
+                            "host": [
+                                "{{gatewayUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-transactions"
+                            ]
+                        },
+                        "description": "Gives the player the resources the reinforce and upgrade below will spend.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"action_id\": \"base-test-gather-metal-{{runId}}\",\n    \"player_id\": \"{{playerId}}\",\n    \"node_id\": \"base-test-metal-{{runId}}\",\n    \"resource_type\": \"metal\",\n    \"quantity\": 60\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Gather Paper",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"player now holds 30 paper\", () => pm.expect(pm.response.json().player_quantity).to.eql(30));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{gatewayUrl}}/api/resource-transactions",
+                            "host": [
+                                "{{gatewayUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-transactions"
+                            ]
+                        },
+                        "description": "Gives the player the resources the reinforce and upgrade below will spend.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"action_id\": \"base-test-gather-paper-{{runId}}\",\n    \"player_id\": \"{{playerId}}\",\n    \"node_id\": \"base-test-paper-{{runId}}\",\n    \"resource_type\": \"paper\",\n    \"quantity\": 30\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Bases",
+            "description": "Create, read and update a base. Run the requests in order: Create Base stores `baseId`, `roomId` and `facilityId` as collection variables for every request after it.",
+            "item": [
+                {
+                    "name": "Create Base",
+                    "event": [
                         {
                             "listen": "test",
                             "script": {
@@ -93,7 +406,10 @@
                                     "});",
                                     "pm.collectionVariables.set(\"baseId\", body.base_id);",
                                     "pm.collectionVariables.set(\"roomId\", body.rooms[0].room_id);",
-                                    "pm.collectionVariables.set(\"facilityId\", body.facilities[0].facility_id);"
+                                    "pm.collectionVariables.set(\"facilityId\", body.facilities[0].facility_id);",
+                                    "pm.test(\"starter room is placed in the requested World room\", () => {",
+                                    "    pm.expect(body.rooms[0].world_room_id).to.eql(pm.collectionVariables.get(\"worldRoomId\"));",
+                                    "});"
                                 ]
                             }
                         }
@@ -116,7 +432,50 @@
                                 "bases"
                             ]
                         },
-                        "description": "Creates a base for a player. Auto-seeds one starter room (barricade level 0) and one starter facility (`crafting_station`, level 1). Saves `baseId`, `roomId` and `facilityId` for the following requests.",
+                        "description": "Creates a base for the player registered in Setup, starting in `worldRoomId` (a room id owned by World Service). Stores baseId, roomId and facilityId for the later requests.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"player_id\": \"{{playerId}}\",\n    \"world_room_id\": \"{{worldRoomId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Base - Missing world_room_id (400)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 400 Bad Request\", () => pm.response.to.have.status(400));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases"
+                            ]
+                        },
+                        "description": "`world_room_id` is required.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n    \"player_id\": \"{{playerId}}\"\n}",
@@ -250,7 +609,7 @@
                                     "    pm.expect(body.room_id).to.eql(pm.collectionVariables.get(\"roomId\"));",
                                     "    pm.expect(body.barricade_level).to.eql(1);",
                                     "});",
-                                    "pm.test(\"resources_spent matches the mocked cost (20 wood, 10 metal_scraps)\", () => {",
+                                    "pm.test(\"resources_spent matches the cost (20 wood, 10 metal_scraps)\", () => {",
                                     "    pm.expect(body.resources_spent).to.eql({ wood: 20, metal_scraps: 10 });",
                                     "});"
                                 ]
@@ -279,7 +638,7 @@
                                 "reinforce"
                             ]
                         },
-                        "description": "Raises the room's barricade from level 0 to 1. Idempotent by `request_id`, which is generated fresh for this request and stored as `requestId` so the replay request below can reuse it.",
+                        "description": "Raises the barricade to level 1. Base asks World Service whether the room is unlocked and has Resource Service deduct the cost, both through the Gateway.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n    \"request_id\": \"{{requestId}}\",\n    \"target_barricade_level\": 1\n}",
@@ -289,6 +648,43 @@
                                 }
                             }
                         }
+                    }
+                },
+                {
+                    "name": "Resources Were Deducted",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "const held = {};",
+                                    "pm.response.json().resources.forEach(r => held[r.resource_type] = r.quantity);",
+                                    "pm.test(\"reinforce took 20 wood and 10 metal from the player\", () => {",
+                                    "    pm.expect(held.wood).to.eql(40);",
+                                    "    pm.expect(held.metal).to.eql(50);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{gatewayUrl}}/api/players/{{playerId}}/resources",
+                            "host": [
+                                "{{gatewayUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerId}}",
+                                "resources"
+                            ]
+                        },
+                        "description": "Reads the balance from Resource Service to show the reinforce was really paid for there."
                     }
                 },
                 {
@@ -458,7 +854,7 @@
                                     "    pm.expect(body.type).to.eql(\"crafting_station\");",
                                     "    pm.expect(body.level).to.eql(2);",
                                     "});",
-                                    "pm.test(\"resources_spent matches the mocked cost (15 metal_scraps, 5 paper)\", () => {",
+                                    "pm.test(\"resources_spent matches the cost (15 metal_scraps, 5 paper)\", () => {",
                                     "    pm.expect(body.resources_spent).to.eql({ metal_scraps: 15, paper: 5 });",
                                     "});"
                                 ]
@@ -566,6 +962,264 @@
                             ]
                         },
                         "description": "Interacting again immediately is rejected until the 60 second cooldown has elapsed."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Refused By Other Services",
+            "description": "Reinforce attempts that World Service or Resource Service turn down.",
+            "item": [
+                {
+                    "name": "Create Base In Locked Room",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "const body = pm.response.json();",
+                                    "pm.collectionVariables.set(\"lockedBaseId\", body.base_id);",
+                                    "pm.collectionVariables.set(\"lockedRoomId\", body.rooms[0].room_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases"
+                            ]
+                        },
+                        "description": "Creation does not check the room; reinforcing does. `lockedWorldRoomId` is in a wing no exam has opened.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"player_id\": \"{{playerId}}\",\n    \"world_room_id\": \"{{lockedWorldRoomId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Reinforce Room - Room Not Eligible (409)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 409 Conflict\", () => pm.response.to.have.status(409));",
+                                    "pm.test(\"error is room_not_eligible\", () => pm.expect(pm.response.json().error).to.eql(\"room_not_eligible\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{lockedBaseId}}/rooms/{{lockedRoomId}}/reinforce",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{lockedBaseId}}",
+                                "rooms",
+                                "{{lockedRoomId}}",
+                                "reinforce"
+                            ]
+                        },
+                        "description": "World Service reports the room as locked, so Base refuses before spending anything.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"request_id\": \"{{$guid}}\",\n    \"target_barricade_level\": 1\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Base In Locked Room",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{lockedBaseId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{lockedBaseId}}"
+                            ]
+                        },
+                        "description": ""
+                    }
+                },
+                {
+                    "name": "Create Base For Player Without Resources",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "const body = pm.response.json();",
+                                    "pm.collectionVariables.set(\"poorBaseId\", body.base_id);",
+                                    "pm.collectionVariables.set(\"poorRoomId\", body.rooms[0].room_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases"
+                            ]
+                        },
+                        "description": "A player Resource Service has never seen, so it holds nothing.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"player_id\": \"{{$guid}}\",\n    \"world_room_id\": \"{{worldRoomId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Reinforce Room - Insufficient Resources (409)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 409 Conflict\", () => pm.response.to.have.status(409));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"error is insufficient_resources\", () => pm.expect(body.error).to.eql(\"insufficient_resources\"));",
+                                    "pm.test(\"required lists what the reinforce costs\", () => {",
+                                    "    pm.expect(body.required).to.eql({ wood: 20, metal_scraps: 10 });",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{poorBaseId}}/rooms/{{poorRoomId}}/reinforce",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{poorBaseId}}",
+                                "rooms",
+                                "{{poorRoomId}}",
+                                "reinforce"
+                            ]
+                        },
+                        "description": "Resource Service refuses the deduction; Base reports what the action costs.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"request_id\": \"{{$guid}}\",\n    \"target_barricade_level\": 1\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Base For Player Without Resources",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/bases/{{poorBaseId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "bases",
+                                "{{poorBaseId}}"
+                            ]
+                        },
+                        "description": ""
                     }
                 }
             ]
@@ -691,7 +1345,7 @@
         },
         {
             "name": "Cleanup",
-            "description": "Deletes the base created by this run. Keep this folder last.",
+            "description": "Deletes the base and the resource nodes this run created. Keep this folder last. The player registered in Setup is left behind: Player Service's delete endpoint currently fails.",
             "item": [
                 {
                     "name": "Delete Base",
@@ -754,6 +1408,96 @@
                         },
                         "description": "Confirms the base is gone."
                     }
+                },
+                {
+                    "name": "Delete Wood Node",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{gatewayUrl}}/api/resource-nodes/base-test-wood-{{runId}}",
+                            "host": [
+                                "{{gatewayUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-nodes",
+                                "base-test-wood-{{runId}}"
+                            ]
+                        },
+                        "description": ""
+                    }
+                },
+                {
+                    "name": "Delete Metal Node",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{gatewayUrl}}/api/resource-nodes/base-test-metal-{{runId}}",
+                            "host": [
+                                "{{gatewayUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-nodes",
+                                "base-test-metal-{{runId}}"
+                            ]
+                        },
+                        "description": ""
+                    }
+                },
+                {
+                    "name": "Delete Paper Node",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{gatewayUrl}}/api/resource-nodes/base-test-paper-{{runId}}",
+                            "host": [
+                                "{{gatewayUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-nodes",
+                                "base-test-paper-{{runId}}"
+                            ]
+                        },
+                        "description": ""
+                    }
                 }
             ]
         }
@@ -788,6 +1532,38 @@
             "key": "requestId",
             "value": "",
             "type": "string"
+        },
+        {
+            "key": "gatewayUrl",
+            "value": "http://localhost:8000"
+        },
+        {
+            "key": "worldRoomId",
+            "value": "room_library"
+        },
+        {
+            "key": "lockedWorldRoomId",
+            "value": "room_canteen"
+        },
+        {
+            "key": "runId",
+            "value": ""
+        },
+        {
+            "key": "lockedBaseId",
+            "value": ""
+        },
+        {
+            "key": "lockedRoomId",
+            "value": ""
+        },
+        {
+            "key": "poorBaseId",
+            "value": ""
+        },
+        {
+            "key": "poorRoomId",
+            "value": ""
         }
     ]
 }
