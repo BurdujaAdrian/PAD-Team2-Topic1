@@ -120,7 +120,7 @@ services:
             retries: 5
 
     zombie-api:
-        image: susanito88/zombie-service:1.0.0
+        image: susanito88/zombie-service:2.0.0
         container_name: cpr-zombie-api
         restart: unless-stopped
         environment:
@@ -154,7 +154,7 @@ services:
             retries: 5
 
     resource-api:
-        image: susanito88/resource-service:1.0.0
+        image: susanito88/resource-service:2.0.0
         container_name: cpr-resource-api
         restart: unless-stopped
         environment:
