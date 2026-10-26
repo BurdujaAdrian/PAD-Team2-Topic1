@@ -65,8 +65,8 @@ docker compose down -v  # stop and delete the data as well
 | Service | URL | Image on Docker Hub | Owner |
 | ------- | --- | ------------------- | ----- |
 | **Gateway** | <http://localhost:8000> | [`gheorghe2973/gateway-service`](https://hub.docker.com/r/gheorghe2973/gateway-service) | Gurschi Gheorghe |
-| Base | <http://localhost:5076> | [`ion04/base-service`](https://hub.docker.com/r/ion04/base-service) | Vornicescu Ion |
-| Crafting | <http://localhost:5198> | [`ion04/crafting-service`](https://hub.docker.com/r/ion04/crafting-service) | Vornicescu Ion |
+| Base (2 replicas) | through the Gateway only | [`ion04/base-service`](https://hub.docker.com/r/ion04/base-service) | Vornicescu Ion |
+| Crafting (2 replicas) | through the Gateway only | [`ion04/crafting-service`](https://hub.docker.com/r/ion04/crafting-service) | Vornicescu Ion |
 | Zombie | <http://localhost:8081> | [`susanito88/zombie-service`](https://hub.docker.com/r/susanito88/zombie-service) | Magla Alexandru |
 | Resource | <http://localhost:8082> | [`susanito88/resource-service`](https://hub.docker.com/r/susanito88/resource-service) | Magla Alexandru |
 | Exam | <http://localhost:8083> | [`gheorghe2973/exam-service`](https://hub.docker.com/r/gheorghe2973/exam-service) | Gurschi Gheorghe |
@@ -79,7 +79,9 @@ brings up the same build rather than whatever `latest` happens to be.
 
 The Gateway is the entry point: clients talk to it, and it talks to the eight
 services. The others are listed with their ports because they stay reachable
-for debugging.
+for debugging. Base and Crafting run as two replicas each (`deploy.replicas` in
+the Compose file), and replicas cannot share a host port, so they are only
+reachable through the Gateway.
 
 Each exposes `GET /api/status` as a health check. The database ports are bound
 to `127.0.0.1` only, so they are reachable for debugging but not from the
