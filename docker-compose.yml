@@ -23,6 +23,20 @@ services:
             - "8000:8080"
 
     # ---------------------------------------------------------------------
+    # Discovery Service
+    # ---------------------------------------------------------------------
+    # The registry instances join on startup. It keeps no data of its own:
+    # the registry lives in memory and the instances rebuild it by registering again.
+    discovery:
+        image: ion04/discovery-service:3.0.0
+        container_name: cpr-discovery
+        restart: unless-stopped
+        environment:
+            LOG_LEVEL: INFO
+        ports:
+            - "8500:8080"
+
+    # ---------------------------------------------------------------------
     # Base Service
     # ---------------------------------------------------------------------
     base-db:
@@ -44,17 +58,18 @@ services:
             retries: 5
 
     base-api:
-        image: ion04/base-service:2.0.0
-        container_name: cpr-base-api
+        image: ion04/base-service:3.0.0
         restart: unless-stopped
+        # Two instances sharing base-db. No container_name and no host port:
+        # replicas cannot share either, so Base is reached through the Gateway.
+        deploy:
+            replicas: 2
         environment:
             ASPNETCORE_ENVIRONMENT: Production
             ConnectionStrings__DefaultConnection: Host=base-db;Port=5432;Database=${BASE_POSTGRES_DB};Username=${BASE_POSTGRES_USER};Password=${BASE_POSTGRES_PASSWORD}
             # Every call to World, Resource and Player goes through the Gateway.
             # Required: the service refuses to start without it.
             GATEWAY_URL: http://gateway:8080
-        ports:
-            - "5076:8080"
         depends_on:
             base-db:
                 condition: service_healthy
@@ -82,8 +97,11 @@ services:
 
     crafting-api:
         image: ion04/crafting-service:2.0.0
-        container_name: cpr-crafting-api
         restart: unless-stopped
+        # Two instances sharing crafting-db. No container_name and no host port:
+        # replicas cannot share either, so Crafting is reached through the Gateway.
+        deploy:
+            replicas: 2
         environment:
             POSTGRES_DB: ${CRAFTING_POSTGRES_DB}
             POSTGRES_USER: ${CRAFTING_POSTGRES_USER}
@@ -93,8 +111,6 @@ services:
             # Every call to Resource, Player and Exam goes through the Gateway.
             # Required: the service refuses to start without it.
             GATEWAY_URL: http://gateway:8080
-        ports:
-            - "5198:8080"
         depends_on:
             crafting-db:
                 condition: service_healthy
