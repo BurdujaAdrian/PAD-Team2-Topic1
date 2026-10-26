@@ -65,6 +65,7 @@ docker compose down -v  # stop and delete the data as well
 | Service | URL | Image on Docker Hub | Owner |
 | ------- | --- | ------------------- | ----- |
 | **Gateway** | <http://localhost:8000> | [`gheorghe2973/gateway-service`](https://hub.docker.com/r/gheorghe2973/gateway-service) | Gurschi Gheorghe |
+| Discovery | <http://localhost:8500> | [`ion04/discovery-service`](https://hub.docker.com/r/ion04/discovery-service) | Vornicescu Ion |
 | Base (2 replicas) | through the Gateway only | [`ion04/base-service`](https://hub.docker.com/r/ion04/base-service) | Vornicescu Ion |
 | Crafting (2 replicas) | through the Gateway only | [`ion04/crafting-service`](https://hub.docker.com/r/ion04/crafting-service) | Vornicescu Ion |
 | Zombie | <http://localhost:8081> | [`susanito88/zombie-service`](https://hub.docker.com/r/susanito88/zombie-service) | Magla Alexandru |

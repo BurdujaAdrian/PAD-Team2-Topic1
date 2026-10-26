@@ -23,6 +23,20 @@ services:
             - "8000:8080"
 
     # ---------------------------------------------------------------------
+    # Discovery Service
+    # ---------------------------------------------------------------------
+    # The registry instances join on startup. It keeps no data of its own:
+    # the registry lives in memory and the instances rebuild it by registering again.
+    discovery:
+        image: ion04/discovery-service:3.0.0
+        container_name: cpr-discovery
+        restart: unless-stopped
+        environment:
+            LOG_LEVEL: INFO
+        ports:
+            - "8500:8080"
+
+    # ---------------------------------------------------------------------
     # Base Service
     # ---------------------------------------------------------------------
     base-db:
