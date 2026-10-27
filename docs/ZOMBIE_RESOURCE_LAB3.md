@@ -9,7 +9,8 @@ docker compose -f docker-compose.zombie-resource-lab3.yml ps
 
 This builds the local Discovery, gateway, Zombie and Resource sources. Each business service has two API replicas sharing its own PostgreSQL database. The databases use separate volumes from the shared stack, an example local password, and no published database ports. The shared deployment compose file still uses the published images.
 
-The service changes must be committed in their individual repositories before updating the CPR submodule references. The gateway checkout must include its Discovery instance pool.
+The submodule references pin the merged Zombie/Resource `main` commits and
+Gateway/Discovery `dev` commits. The gateway includes its Discovery instance pool.
 
 ## Presentation checks
 
@@ -76,10 +77,10 @@ Watch logs from the CPR root:
 docker compose -f docker-compose.zombie-resource-lab3.yml logs -f --tail=30 gateway discovery zombie-api resource-api
 ```
 
-The Gateway uses `feature/lab3-circuit-breaker`; Discovery uses
-`feature/lab3-health-monitoring`. Zombie and Resource changes remain on their
-existing `feature/lab3-discovery` branches. No images are published until the
-individual repository release workflows run after approved merges.
+The service PRs have been merged: Zombie #6 and Resource #4 into `main`,
+Gateway #16 and Discovery #4 into `dev`. CPR pins those merged commits.
+The source-built setup does not depend on Docker Hub release completion;
+the shared deployment's image tags must only change after the releases succeed.
 
 Other teammates' services still need the grade 7 tracker on their own outgoing
 calls; this implementation does not add it automatically to those repositories.
