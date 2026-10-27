@@ -280,15 +280,21 @@ services:
             retries: 5
 
     exam-api:
-        image: gheorghe2973/exam-service:2.0.0
-        container_name: cpr-exam-api
+        image: gheorghe2973/exam-service:3.1.0
         restart: unless-stopped
+        # Two instances sharing exam-db. No container_name and no host port:
+        # replicas cannot share either, so Exam is reached through the Gateway.
+        deploy:
+            replicas: 2
         environment:
             RQLITE_URL: http://exam-db:4001
+            # Both replicas seed at boot; rows that already exist are skipped.
             SEED_ON_START: "true"
-            EXAM_PASSED_SUBSCRIBERS: http://world-api:8080/api/events/exam-passed
-        ports:
-            - "8083:8080"
+            # Through the Gateway like every other service-to-service call, so
+            # the event is balanced across the World replicas.
+            EXAM_PASSED_SUBSCRIBERS: http://gateway:8080/api/events/exam-passed
+            DISCOVERY_URL: http://discovery:8080
+            REGISTER_INTERVAL_SECONDS: "10"
         depends_on:
             exam-db:
                 condition: service_healthy
@@ -317,15 +323,19 @@ services:
             retries: 5
 
     world-api:
-        image: gheorghe2973/world-service:2.1.0
-        container_name: cpr-world-api
+        image: gheorghe2973/world-service:3.1.0
         restart: unless-stopped
+        # Two instances sharing world-db. No container_name and no host port:
+        # replicas cannot share either, so World is reached through the Gateway.
+        deploy:
+            replicas: 2
         environment:
             RQLITE_URL: http://world-db:4001
+            # Both replicas seed at boot; rows that already exist are skipped.
             SEED_ON_START: "true"
             SECTION_UNLOCKED_SUBSCRIBERS: ""
-        ports:
-            - "8084:8080"
+            DISCOVERY_URL: http://discovery:8080
+            REGISTER_INTERVAL_SECONDS: "10"
         depends_on:
             world-db:
                 condition: service_healthy
