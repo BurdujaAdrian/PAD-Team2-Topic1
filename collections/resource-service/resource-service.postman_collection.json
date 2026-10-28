@@ -5,7 +5,7 @@
     "description": "Resource CRUD, atomicity, idempotency and event checks for Resource Service."
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8082" },
+    { "key": "baseUrl", "value": "http://localhost:8000" },
     { "key": "run_id", "value": "" }
   ],
   "item": [

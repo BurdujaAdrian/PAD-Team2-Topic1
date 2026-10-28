@@ -6,7 +6,7 @@ services:
     # Gateway
     # ---------------------------------------------------------------------
     gateway:
-        image: gheorghe2973/gateway-service:2.0.0
+        image: gheorghe2973/gateway-service:3.0.1-dev
         container_name: cpr-gateway
         restart: unless-stopped
         environment:
@@ -19,6 +19,9 @@ services:
             ZOMBIE_SERVICE_URL: http://zombie-api:8080
             RESOURCE_SERVICE_URL: http://resource-api:8080
             WS_TICKET_SECRET: ${WS_TICKET_SECRET}
+            # Services that register here (Base, Crafting) are reached through their
+            # instances in turn (Round-Robin); the URLs above are the fallback.
+            DISCOVERY_URL: http://discovery:8080
         ports:
             - "8000:8080"
 
@@ -28,11 +31,15 @@ services:
     # The registry instances join on startup. It keeps no data of its own:
     # the registry lives in memory and the instances rebuild it by registering again.
     discovery:
-        image: ion04/discovery-service:3.0.0
+        image: ion04/discovery-service:3.0.2
         container_name: cpr-discovery
         restart: unless-stopped
         environment:
             LOG_LEVEL: INFO
+            # Health alerts also go to the developers' Telegram group. Left empty in
+            # .env, the alerts are only logged.
+            TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+            TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
         ports:
             - "8500:8080"
 
@@ -58,7 +65,7 @@ services:
             retries: 5
 
     base-api:
-        image: ion04/base-service:3.0.0
+        image: ion04/base-service:3.2.0
         restart: unless-stopped
         # Two instances sharing base-db. No container_name and no host port:
         # replicas cannot share either, so Base is reached through the Gateway.
@@ -70,6 +77,8 @@ services:
             # Every call to World, Resource and Player goes through the Gateway.
             # Required: the service refuses to start without it.
             GATEWAY_URL: http://gateway:8080
+            # Each replica registers here on startup so the Gateway can find it.
+            DISCOVERY_URL: http://discovery:8080
         depends_on:
             base-db:
                 condition: service_healthy
@@ -96,7 +105,7 @@ services:
             retries: 10
 
     crafting-api:
-        image: ion04/crafting-service:2.0.0
+        image: ion04/crafting-service:3.2.0
         restart: unless-stopped
         # Two instances sharing crafting-db. No container_name and no host port:
         # replicas cannot share either, so Crafting is reached through the Gateway.
@@ -111,6 +120,8 @@ services:
             # Every call to Resource, Player and Exam goes through the Gateway.
             # Required: the service refuses to start without it.
             GATEWAY_URL: http://gateway:8080
+            # Each replica registers here on startup so the Gateway can find it.
+            DISCOVERY_URL: http://discovery:8080
         depends_on:
             crafting-db:
                 condition: service_healthy
@@ -137,14 +148,17 @@ services:
             retries: 5
 
     zombie-api:
-        image: susanito88/zombie-service:2.0.0
-        container_name: cpr-zombie-api
+        image: susanito88/zombie-service:3.0.0
         restart: unless-stopped
+        # Two instances sharing zombie-db. No container_name and no host port:
+        # replicas cannot share either, so Zombie is reached through the Gateway.
+        deploy:
+            replicas: 2
         environment:
             ConnectionStrings__Database: Host=zombie-db;Port=5432;Database=${ZOMBIE_POSTGRES_DB};Username=${ZOMBIE_POSTGRES_USER};Password=${ZOMBIE_POSTGRES_PASSWORD}
             Database__ApplyMigrationsOnStartup: "true"
-        ports:
-            - "8081:8080"
+            # Each replica registers here on startup so the Gateway can find it.
+            DISCOVERY_URL: http://discovery:8080
         depends_on:
             zombie-db:
                 condition: service_healthy
@@ -171,14 +185,17 @@ services:
             retries: 5
 
     resource-api:
-        image: susanito88/resource-service:2.0.0
-        container_name: cpr-resource-api
+        image: susanito88/resource-service:3.0.0
         restart: unless-stopped
+        # Two instances sharing resource-db. No container_name and no host port:
+        # replicas cannot share either, so Resource is reached through the Gateway.
+        deploy:
+            replicas: 2
         environment:
             ConnectionStrings__Database: Host=resource-db;Port=5432;Database=${RESOURCE_POSTGRES_DB};Username=${RESOURCE_POSTGRES_USER};Password=${RESOURCE_POSTGRES_PASSWORD}
             Database__ApplyMigrationsOnStartup: "true"
-        ports:
-            - "8082:8080"
+            # Each replica registers here on startup so the Gateway can find it.
+            DISCOVERY_URL: http://discovery:8080
         depends_on:
             resource-db:
                 condition: service_healthy
@@ -245,7 +262,8 @@ services:
             start_period: 5s
 
     player-service:
-        image: adrianburduja/player-service:0.0.2
+        # 0.0.2 is not published on Docker Hub; 0.0.1 is the latest version tag.
+        image: adrianburduja/player-service:0.0.1
         container_name: cpr-player-service
         restart: unless-stopped
         depends_on:
