@@ -224,9 +224,8 @@ services:
             retries: 10
             start_period: 5s
 
-    game-service:
-        image: adrianburduja/game-service:0.0.2
-        container_name: cpr-game-service
+    game-service-1:
+        image: adrianburduja/game-service:0.2.5
         restart: unless-stopped
         depends_on:
             game-db:
@@ -234,8 +233,25 @@ services:
         environment:
             - DB_DSN=http://game-db:4001
             - WS_TICKET_SECRET=${WS_TICKET_SECRET}
+            - WS_PUBLIC_ADDRESS=http://localhost:8086
+            - INSTANCE_ID=game-service-1
+            - DISCOVERY_URL=http://discovery:8080
         ports:
             - "8086:8080"
+    game-service-2:
+        image: adrianburduja/game-service:0.2.5
+        restart: unless-stopped
+        depends_on:
+            game-db:
+                condition: service_healthy
+        environment:
+            - DB_DSN=http://game-db:4001
+            - WS_TICKET_SECRET=${WS_TICKET_SECRET}
+            - WS_PUBLIC_ADDRESS=http://localhost:8086
+            - INSTANCE_ID=game-service-1
+            - DISCOVERY_URL=http://discovery:8080
+        ports:
+            - "8087:8080"
 
     # ---------------------------------------------------------------------
     # Player Service
@@ -263,16 +279,16 @@ services:
 
     player-service:
         # 0.0.2 is not published on Docker Hub; 0.0.1 is the latest version tag.
-        image: adrianburduja/player-service:0.0.1
-        container_name: cpr-player-service
+        image: adrianburduja/player-service:0.2.4
         restart: unless-stopped
         depends_on:
             player-db:
                 condition: service_healthy
+        deploy:
+          replicas: 2
         environment:
+            - DISCOVERY_URL=http://discovery:8080
             - DB_DSN=http://player-db:4001
-        ports:
-            - "8085:8080"
 
     # ---------------------------------------------------------------------
     # Exam Service
