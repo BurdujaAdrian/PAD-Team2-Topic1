@@ -14,9 +14,6 @@ PAD Team 2's Common Public Repository
 
 ![PAD architecture](docs/images/diagram.drawio.png)
 
-The file is a draw.io export with the source embedded, so it opens for editing
-at <https://app.diagrams.net> as it is - there is no second file to keep in sync.
-
 ## Running the Stack
 
 Everything runs from the Compose file in this repository. It pulls prebuilt
@@ -38,6 +35,11 @@ cp .env.example .env
 
 Replace every `change_me` with a value of your own. `.env` is not tracked; only
 the template is.
+
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are the bot and the group that
+Discovery sends its health alerts to (critical load, failed health check,
+recovery). Ask the Discovery owner for them, or leave them empty: the alerts are
+then only written to Discovery's log.
 
 The Exam and World databases need nothing here: their rqlite instances are
 bound to `127.0.0.1` and reachable only from inside the Compose network, so
@@ -65,12 +67,13 @@ docker compose down -v  # stop and delete the data as well
 | Service | URL | Image on Docker Hub | Owner |
 | ------- | --- | ------------------- | ----- |
 | **Gateway** | <http://localhost:8000> | [`gheorghe2973/gateway-service`](https://hub.docker.com/r/gheorghe2973/gateway-service) | Gurschi Gheorghe |
-| Base | <http://localhost:5076> | [`ion04/base-service`](https://hub.docker.com/r/ion04/base-service) | Vornicescu Ion |
-| Crafting | <http://localhost:5198> | [`ion04/crafting-service`](https://hub.docker.com/r/ion04/crafting-service) | Vornicescu Ion |
-| Zombie | <http://localhost:8081> | [`susanito88/zombie-service`](https://hub.docker.com/r/susanito88/zombie-service) | Magla Alexandru |
-| Resource | <http://localhost:8082> | [`susanito88/resource-service`](https://hub.docker.com/r/susanito88/resource-service) | Magla Alexandru |
-| Exam | <http://localhost:8083> | [`gheorghe2973/exam-service`](https://hub.docker.com/r/gheorghe2973/exam-service) | Gurschi Gheorghe |
-| World | <http://localhost:8084> | [`gheorghe2973/world-service`](https://hub.docker.com/r/gheorghe2973/world-service) | Gurschi Gheorghe |
+| Discovery | <http://localhost:8500> | [`ion04/discovery-service`](https://hub.docker.com/r/ion04/discovery-service) | Vornicescu Ion |
+| Base (2 replicas) | through the Gateway only | [`ion04/base-service`](https://hub.docker.com/r/ion04/base-service) | Vornicescu Ion |
+| Crafting (2 replicas) | through the Gateway only | [`ion04/crafting-service`](https://hub.docker.com/r/ion04/crafting-service) | Vornicescu Ion |
+| Zombie (2 replicas) | through the Gateway only | [`susanito88/zombie-service`](https://hub.docker.com/r/susanito88/zombie-service) | Magla Alexandru |
+| Resource (2 replicas) | through the Gateway only | [`susanito88/resource-service`](https://hub.docker.com/r/susanito88/resource-service) | Magla Alexandru |
+| Exam (2 replicas) | through the Gateway only | [`gheorghe2973/exam-service`](https://hub.docker.com/r/gheorghe2973/exam-service) | Gurschi Gheorghe |
+| World (2 replicas) | through the Gateway only | [`gheorghe2973/world-service`](https://hub.docker.com/r/gheorghe2973/world-service) | Gurschi Gheorghe |
 | Player | <http://localhost:8085> | [`adrianburduja/player-service`](https://hub.docker.com/r/adrianburduja/player-service) | Burduja Adrian |
 | Game | <http://localhost:8086> | [`adrianburduja/game-service`](https://hub.docker.com/r/adrianburduja/game-service) | Burduja Adrian |
 
@@ -79,7 +82,18 @@ brings up the same build rather than whatever `latest` happens to be.
 
 The Gateway is the entry point: clients talk to it, and it talks to the eight
 services. The others are listed with their ports because they stay reachable
-for debugging.
+for debugging. Base, Crafting, Zombie, Resource, Exam and World run as two replicas each
+(`deploy.replicas` in the Compose file), and replicas cannot share a host port,
+so they are only reachable through the Gateway. Each replica registers itself with Discovery
+on startup and deregisters on shutdown; the Gateway reads the instances from
+Discovery and sends the requests of each service to them in turn
+(Round-Robin), so replicas can be added or removed with
+`docker compose up -d --scale base-api=3` without any other change.
+`http://localhost:8500/api/registry/services` lists the registered instances.
+
+Exam, World, Zombie and Resource replicas join the Discovery Service on startup; the registry is
+at <http://localhost:8500/api/registry/services>. Every Exam, World, Zombie and Resource
+response names the replica that produced it in `X-Service-Instance`.
 
 Each exposes `GET /api/status` as a health check. The database ports are bound
 to `127.0.0.1` only, so they are reachable for debugging but not from the
@@ -829,8 +843,19 @@ Error Responses: `404 Not Found` — unknown attempt. `409 Conflict` — the att
 Success Response (200 OK):
 
 ```json
-{ "service": "exam", "status": "ok", "uptime_seconds": 1234 }
+{
+	"service": "exam",
+	"status": "ok",
+	"instance_id": "3f2a9c1d7b44",
+	"uptime_seconds": 1234,
+	"database": "ok",
+	"load": { "active_tasks": 12, "max_concurrent_tasks": 64 }
+}
 ```
+
+`instance_id` is the replica that answered. `load` is read by the Discovery
+Service to raise `load_critical`. When rqlite does not answer, the response is
+`503 Service Unavailable` with `status: unavailable` and `database: unreachable`.
 
 #### Endpoint Index
 
@@ -1064,8 +1089,17 @@ The service also exposes CRUD over the map it owns: worlds (`/api/worlds`), sect
 Success Response (200 OK):
 
 ```json
-{ "service": "world", "status": "ok", "uptime_seconds": 1234 }
+{
+	"service": "world",
+	"status": "ok",
+	"instance_id": "8c41e07a2d19",
+	"uptime_seconds": 1234,
+	"database": "ok",
+	"load": { "active_tasks": 12, "max_concurrent_tasks": 64 }
+}
 ```
+
+Same fields and the same `503` as the Exam Service's status.
 
 ---
 
@@ -1086,7 +1120,9 @@ changes the transport and nothing else.
 | `section_unlocked` | World Service | Resource Service, Game Service | not wired yet |
 
 Subscribers are set per topic through the environment, as a comma-separated
-list of URLs, so a topic can reach several services:
+list of URLs, so a topic can reach several services. In the shared deployment
+they point at the Gateway (`http://gateway:8080/api/events/exam-passed`), like
+every other service-to-service call:
 
 | Service | Variable |
 | ------- | -------- |
@@ -1262,9 +1298,9 @@ Success Response (200 OK):
 
 ### Deployment and testing
 
-The shared Compose file runs `susanito88/zombie-service:1.0.0` at `http://localhost:8081` with its own PostgreSQL database and persistent volume. It sets `Database__ApplyMigrationsOnStartup: "true"`, so EF Core applies migrations before the API starts; no manual table creation is needed on a fresh database.
+The shared Compose file runs `susanito88/zombie-service:3.0.0` as two replicas behind the Gateway (`http://localhost:8000`), sharing one PostgreSQL database and persistent volume. It sets `Database__ApplyMigrationsOnStartup: "true"`, so EF Core applies migrations before the API starts; no manual table creation is needed on a fresh database.
 
-Import the [Zombie Postman collection](collections/zombie-service/zombie-service.postman_collection.json) and run its requests in collection order. Its `baseUrl` defaults to `http://localhost:8081`; the collection generates identifiers for the run. It covers type CRUD and validation. Game Service still owns live zombie instances and spawning; these requests exercise the configuration API directly.
+Import the [Zombie Postman collection](collections/zombie-service/zombie-service.postman_collection.json) and run its requests in collection order. Its `baseUrl` defaults to the Gateway, `http://localhost:8000`; the collection generates identifiers for the run. It covers type CRUD and validation. Game Service still owns live zombie instances and spawning; these requests exercise the configuration API directly.
 
 ## Resource Service
 
@@ -1432,9 +1468,9 @@ Success Response (200 OK):
 
 ### Deployment and testing
 
-The shared Compose file runs `susanito88/resource-service:1.0.0` at `http://localhost:8082` with its own PostgreSQL database and persistent volume. It sets `Database__ApplyMigrationsOnStartup: "true"`, so EF Core applies migrations before the API starts; no manual table creation is needed on a fresh database.
+The shared Compose file runs `susanito88/resource-service:3.0.0` as two replicas behind the Gateway (`http://localhost:8000`), sharing one PostgreSQL database and persistent volume. It sets `Database__ApplyMigrationsOnStartup: "true"`, so EF Core applies migrations before the API starts; no manual table creation is needed on a fresh database.
 
-Import the [Resource Postman collection](collections/resource-service/resource-service.postman_collection.json) and run its requests in collection order. Its `baseUrl` defaults to `http://localhost:8082`; the collection generates identifiers for the run. It covers node CRUD, gathering, consumption, duplicate operations, validation, and simulated section-unlocked events. These calls simulate requests from peer services; they do not demonstrate full live integration with Game, Crafting, Base, or World. Player IDs are accepted without checking Player Service.
+Import the [Resource Postman collection](collections/resource-service/resource-service.postman_collection.json) and run its requests in collection order. Its `baseUrl` defaults to the Gateway, `http://localhost:8000`; the collection generates identifiers for the run. It covers node CRUD, gathering, consumption, duplicate operations, validation, and simulated section-unlocked events. These calls simulate requests from peer services; they do not demonstrate full live integration with Game, Crafting, Base, or World. Player IDs are accepted without checking Player Service.
 
 ## Base Service
 

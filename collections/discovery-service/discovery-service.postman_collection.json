@@ -1,0 +1,909 @@
+{
+    "info": {
+        "_postman_id": "242e00e4-b9e3-413b-ab2c-cb9af8ef4b1d",
+        "name": "Discovery Service",
+        "description": "Test collection for the Discovery Service (`services/discovery-service`): the registry every service instance joins on startup, and that the Gateway reads to balance requests.\n\nRun the folders top to bottom. **Registry** shows what the running stack registered (Base and Crafting, 2 instances each with the CPR Compose file). **Registration** walks a made-up instance of a `postman-test` service through register, refresh, conflict and deregister, and leaves the registry as it found it. **Failures** reports a made-up instance the way the Gateway does when its circuit breaker removes one, and checks that Discovery takes it out of rotation without forgetting it. The Gateway routes no path to `postman-test`, so the test instance never receives traffic.\n\nVariable `discoveryUrl` defaults to `http://localhost:8500`, the port the CPR publishes.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Status",
+            "description": "Health check of Discovery itself.",
+            "item": [
+                {
+                    "name": "Service Status",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"service is discovery and status is ok\", () => {",
+                                    "    pm.expect(body.service).to.eql(\"discovery\");",
+                                    "    pm.expect(body.status).to.eql(\"ok\");",
+                                    "});",
+                                    "pm.test(\"uptime and registered instance count are numbers\", () => {",
+                                    "    pm.expect(body.uptime_seconds).to.be.at.least(0);",
+                                    "    pm.expect(body.registered_instances).to.be.at.least(0);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/status",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "status"
+                            ]
+                        },
+                        "description": "Returns the service name, `ok`, the uptime and how many instances are registered."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Registry",
+            "description": "What the running services registered.",
+            "item": [
+                {
+                    "name": "List All Services",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const services = pm.response.json().services.map(s => s.service);",
+                                    "pm.test(\"base and crafting are registered\", () => {",
+                                    "    pm.expect(services).to.include(\"base\");",
+                                    "    pm.expect(services).to.include(\"crafting\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/services",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "services"
+                            ]
+                        },
+                        "description": "Every registered service with all of its instances, `up` and `down`."
+                    }
+                },
+                {
+                    "name": "Base Instances in Discovery",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"lists the base service\", () => pm.expect(body.service).to.eql(\"base\"));",
+                                    "pm.test(\"at least one instance is registered\", () => pm.expect(body.instances).to.be.an(\"array\").that.is.not.empty);",
+                                    "pm.test(\"every instance is up and has an http address on port 8080\", () => {",
+                                    "    body.instances.forEach(i => {",
+                                    "        pm.expect(i.state).to.eql(\"up\");",
+                                    "        pm.expect(i.address).to.match(/^http:\\/\\/[^/]+:8080$/);",
+                                    "        pm.expect(i.instance_id).to.be.a(\"string\").and.not.empty;",
+                                    "    });",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/services/base",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "services",
+                                "base"
+                            ]
+                        },
+                        "description": "Lists the base instances registered with Discovery - the ones the Gateway balances requests among (Round-Robin). With the CPR Compose file there are 2. Scale with `docker compose up -d --scale base-api=3` and send this again to see a new instance join."
+                    }
+                },
+                {
+                    "name": "Crafting Instances in Discovery",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"lists the crafting service\", () => pm.expect(body.service).to.eql(\"crafting\"));",
+                                    "pm.test(\"at least one instance is registered\", () => pm.expect(body.instances).to.be.an(\"array\").that.is.not.empty);",
+                                    "pm.test(\"every instance is up and has an http address on port 8080\", () => {",
+                                    "    body.instances.forEach(i => {",
+                                    "        pm.expect(i.state).to.eql(\"up\");",
+                                    "        pm.expect(i.address).to.match(/^http:\\/\\/[^/]+:8080$/);",
+                                    "        pm.expect(i.instance_id).to.be.a(\"string\").and.not.empty;",
+                                    "    });",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/services/crafting",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "services",
+                                "crafting"
+                            ]
+                        },
+                        "description": "Lists the crafting instances registered with Discovery - the ones the Gateway balances requests among (Round-Robin). With the CPR Compose file there are 2. Scale with `docker compose up -d --scale crafting-api=3` and send this again to see a new instance join."
+                    }
+                },
+                {
+                    "name": "Unknown Service - Empty List",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"instances is an empty list\", () => pm.expect(pm.response.json().instances).to.eql([]));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/services/no-such-service",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "services",
+                                "no-such-service"
+                            ]
+                        },
+                        "description": "A service with no instance is a normal state while the stack starts, so it is an empty list, not a 404."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Registration",
+            "description": "The lifecycle of an instance, with a made-up one. Run in order.",
+            "item": [
+                {
+                    "name": "Register Test Instance (201)",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set(\"runId\", pm.variables.replaceIn(\"{{$guid}}\").substring(0, 8));"
+                                ]
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"the instance is registered as up\", () => {",
+                                    "    pm.expect(body.service).to.eql(\"postman-test\");",
+                                    "    pm.expect(body.instance_id).to.eql(\"postman-test-\" + pm.collectionVariables.get(\"runId\"));",
+                                    "    pm.expect(body.state).to.eql(\"up\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/instances",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "instances"
+                            ]
+                        },
+                        "description": "What every instance sends on startup. Sets `runId`, which makes the instance id unique.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"service\": \"postman-test\",\n    \"instance_id\": \"postman-test-{{runId}}\",\n    \"address\": \"http://postman-test-{{runId}}:8080\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Refresh Test Instance (200)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"the instance is still up\", () => pm.expect(pm.response.json().state).to.eql(\"up\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/instances",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "instances"
+                            ]
+                        },
+                        "description": "The same registration again, as instances repeat it every 30 seconds.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"service\": \"postman-test\",\n    \"instance_id\": \"postman-test-{{runId}}\",\n    \"address\": \"http://postman-test-{{runId}}:8080\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Test Instance Is Listed",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const ids = pm.response.json().instances.map(i => i.instance_id);",
+                                    "pm.test(\"the test instance is listed\", () => pm.expect(ids).to.include(\"postman-test-\" + pm.collectionVariables.get(\"runId\")));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/services/postman-test",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "services",
+                                "postman-test"
+                            ]
+                        },
+                        "description": "The instances the Gateway would balance among for `postman-test`."
+                    }
+                },
+                {
+                    "name": "Register Same Id Under Another Service (409)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 409 Conflict\", () => pm.response.to.have.status(409));",
+                                    "pm.test(\"error is instance_conflict\", () => pm.expect(pm.response.json().error).to.eql(\"instance_conflict\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/instances",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "instances"
+                            ]
+                        },
+                        "description": "An instance id belongs to one service.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"service\": \"postman-other\",\n    \"instance_id\": \"postman-test-{{runId}}\",\n    \"address\": \"http://postman-test-{{runId}}:8080\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Register Invalid Address (400)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                                    "pm.test(\"error is invalid_registration\", () => pm.expect(pm.response.json().error).to.eql(\"invalid_registration\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/instances",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "instances"
+                            ]
+                        },
+                        "description": "`address` has to be an http(s) URL.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"service\": \"postman-test\",\n    \"instance_id\": \"postman-test-{{runId}}\",\n    \"address\": \"not-a-url\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Deregister Test Instance (204)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/instances/postman-test-{{runId}}",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "instances",
+                                "postman-test-{{runId}}"
+                            ]
+                        },
+                        "description": "What every instance sends on graceful shutdown."
+                    }
+                },
+                {
+                    "name": "Deregister Again (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 404 Not Found\", () => pm.response.to.have.status(404));",
+                                    "pm.test(\"error is instance_not_found\", () => pm.expect(pm.response.json().error).to.eql(\"instance_not_found\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/instances/postman-test-{{runId}}",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "instances",
+                                "postman-test-{{runId}}"
+                            ]
+                        },
+                        "description": "The instance is gone."
+                    }
+                },
+                {
+                    "name": "Test Instance Is No Longer Listed",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const ids = pm.response.json().instances.map(i => i.instance_id);",
+                                    "pm.test(\"the test instance is gone\", () => pm.expect(ids).to.not.include(\"postman-test-\" + pm.collectionVariables.get(\"runId\")));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/services/postman-test",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "services",
+                                "postman-test"
+                            ]
+                        },
+                        "description": "The Gateway would no longer send it requests."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Failures",
+            "description": "What the Gateway sends when its circuit breaker removes an instance from routing (Lab 3, grade 10), with a made-up one. Run in order; the folder registers the test instance again and deregisters it at the end.\n\nThe first report raises the `instance_removed_by_breaker` alert, so with Telegram configured each run sends one message about `postman-test`.",
+            "item": [
+                {
+                    "name": "Register Test Instance (201)",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set(\"runId\", pm.variables.replaceIn(\"{{$guid}}\").substring(0, 8));"
+                                ]
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "pm.test(\"the instance starts up\", () => pm.expect(pm.response.json().state).to.eql(\"up\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/instances",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "instances"
+                            ]
+                        },
+                        "description": "A fresh instance to report. Sets `runId` again, so the folder also runs on its own.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"service\": \"postman-test\",\n    \"instance_id\": \"postman-test-{{runId}}\",\n    \"address\": \"http://postman-test-{{runId}}:8080\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Report Failures (200)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"the instance is now down\", () => {",
+                                    "    pm.expect(body.instance_id).to.eql(\"postman-test-\" + pm.collectionVariables.get(\"runId\"));",
+                                    "    pm.expect(body.state).to.eql(\"down\");",
+                                    "});",
+                                    "pm.test(\"this was the first report\", () => pm.expect(body.already_down).to.eql(false));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/instances/postman-test-{{runId}}/failures",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "instances",
+                                "postman-test-{{runId}}",
+                                "failures"
+                            ]
+                        },
+                        "description": "A caller's circuit breaker tripped on this instance. Discovery takes it out of rotation at once.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"reported_by\": \"postman\",\n    \"reason\": \"circuit_breaker_tripped\",\n    \"failures\": 3,\n    \"window_seconds\": 17.5\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Reported Instance Is Not Routed",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const testId = \"postman-test-\" + pm.collectionVariables.get(\"runId\");",
+                                    "const ids = pm.response.json().instances.map(i => i.instance_id);",
+                                    "pm.test(\"the reported instance is not listed\", () => pm.expect(ids).to.not.include(testId));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/services/postman-test",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "services",
+                                "postman-test"
+                            ]
+                        },
+                        "description": "The list the Gateway balances among leaves the instance out."
+                    }
+                },
+                {
+                    "name": "Reported Instance Is Still Registered",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const testId = \"postman-test-\" + pm.collectionVariables.get(\"runId\");",
+                                    "const instance = pm.response.json().instances.find(i => i.instance_id === testId);",
+                                    "pm.test(\"the instance is listed as down\", () => {",
+                                    "    pm.expect(instance).to.exist;",
+                                    "    pm.expect(instance.state).to.eql(\"down\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/services/postman-test?state=all",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "services",
+                                "postman-test"
+                            ],
+                            "query": [
+                                {
+                                    "key": "state",
+                                    "value": "all"
+                                }
+                            ]
+                        },
+                        "description": "It stays registered as `down`, so health checks continue and the first successful one brings it back."
+                    }
+                },
+                {
+                    "name": "Report Again - No Second Alert (200)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"the instance was already down\", () => pm.expect(pm.response.json().already_down).to.eql(true));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/instances/postman-test-{{runId}}/failures",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "instances",
+                                "postman-test-{{runId}}",
+                                "failures"
+                            ]
+                        },
+                        "description": "Another caller reports the same instance. Nothing changes and no second alert is raised.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"reported_by\": \"postman\",\n    \"reason\": \"circuit_breaker_tripped\",\n    \"failures\": 3,\n    \"window_seconds\": 17.5\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Report Without reported_by (400)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                                    "pm.test(\"error is invalid_failure_report\", () => pm.expect(pm.response.json().error).to.eql(\"invalid_failure_report\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/instances/postman-test-{{runId}}/failures",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "instances",
+                                "postman-test-{{runId}}",
+                                "failures"
+                            ]
+                        },
+                        "description": "A report has to say who sent it.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"reason\": \"circuit_breaker_tripped\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Report Unknown Instance (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 404 Not Found\", () => pm.response.to.have.status(404));",
+                                    "pm.test(\"error is instance_not_found\", () => pm.expect(pm.response.json().error).to.eql(\"instance_not_found\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/instances/no-such-instance/failures",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "instances",
+                                "no-such-instance",
+                                "failures"
+                            ]
+                        },
+                        "description": "Only a registered instance can be reported.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"reported_by\": \"postman\",\n    \"reason\": \"circuit_breaker_tripped\",\n    \"failures\": 3,\n    \"window_seconds\": 17.5\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Deregister Test Instance (204)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{discoveryUrl}}/api/registry/instances/postman-test-{{runId}}",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "instances",
+                                "postman-test-{{runId}}"
+                            ]
+                        },
+                        "description": "Leaves the registry as the folder found it."
+                    }
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "discoveryUrl",
+            "value": "http://localhost:8500"
+        },
+        {
+            "key": "runId",
+            "value": ""
+        }
+    ]
+}

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "0d00e639-c503-4307-8f13-57d0e0d9969e",
     "name": "PAD Team 2 — World Service",
-    "description": "World Service (Gurschi Gheorghe, Go). Owns the persistent campus map: rooms, sections, resource node placement, zombie spawn points and section unlock state.\n\n**Running it:** start the service with `go run ./cmd/server` in this repository, then run the whole collection. Every request asserts the status code the contract promises, so a green run means the service still honours it.\n\n**Data:** the service seeds the campus `utm_campus` at boot. The Main Wing is open, the East Wing waits on `math_analysis` and the North Wing on `operating_systems`. The CRUD folders create and delete their own throwaway records, so the seeded campus survives a run.",
+    "description": "World Service (Gurschi Gheorghe, Go). Owns the persistent campus map: rooms, sections, resource node placement, zombie spawn points and section unlock state.\n\n**Running it:** start the shared stack with `docker compose up -d` in the Common Public Repository, then run the whole collection. Every request goes to the Gateway (`baseUrl` = `http://localhost:8000`), which balances it across the two World replicas, so a green run also shows that both replicas serve the same data. Every request asserts the status code the contract promises.\n\nTo test one instance on its own, start it with `go run ./cmd/server`, set `baseUrl` to `http://localhost:8082` and skip the *Lab 3* folder, which needs the Gateway and Discovery.\n\n**Data:** the service seeds the campus `utm_campus` at boot. The Main Wing is open, the East Wing waits on `math_analysis` and the North Wing on `operating_systems`. The CRUD folders create and delete their own throwaway records, so the seeded campus survives a run.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -1725,11 +1725,11 @@
       ]
     },
     {
-      "name": "11. Service",
-      "description": "Health.",
+      "name": "11. Status at baseUrl",
+      "description": "Through the Gateway, `GET /api/status` is answered by the Gateway itself, not by a World replica: the replicas have no port of their own. Their status (`load`, `database`, `instance_id`) is read by Discovery, see the next folder. Run against a single instance, this request returns the World Service's own status.",
       "item": [
         {
-          "name": "Service status",
+          "name": "Status of whatever answers at baseUrl",
           "request": {
             "method": "GET",
             "header": [],
@@ -1743,7 +1743,7 @@
                 "status"
               ]
             },
-            "description": "Health check with uptime. Used by the other services and by the Compose health check."
+            "description": "Through the Gateway, `GET /api/status` is answered by the Gateway itself, not by a World replica: the replicas have no port of their own. Their status (`load`, `database`, `instance_id`) is read by Discovery, see the next folder. Run against a single instance, this request returns the World Service's own status."
           },
           "event": [
             {
@@ -1753,6 +1753,153 @@
                 "exec": [
                   "pm.test(\"responds 200\", function () {",
                   "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"reports status ok\", function () {",
+                  "    pm.expect(pm.response.json().status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "12. Lab 3 – replicas",
+      "description": "Lab 3: the World Service runs as two replicas that register with Discovery, and the Gateway sends requests to them in turn (Round-Robin). Needs the whole stack and `discoveryUrl` = `http://localhost:8500`.",
+      "item": [
+        {
+          "name": "Replicas registered in Discovery",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{discoveryUrl}}/api/registry/services/world",
+              "host": [
+                "{{discoveryUrl}}"
+              ],
+              "path": [
+                "api",
+                "registry",
+                "services",
+                "world"
+              ]
+            },
+            "description": "Discovery lists the replicas that registered on startup, with the health and load it read from each one's `GET /api/status`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const instances = pm.response.json().instances;",
+                  "pm.test(\"at least two replicas are registered\", function () {",
+                  "    pm.expect(instances.length).to.be.at.least(2);",
+                  "});",
+                  "pm.test(\"every replica is up and healthy\", function () {",
+                  "    instances.forEach(function (i) {",
+                  "        pm.expect(i.state).to.eql(\"up\");",
+                  "        pm.expect([\"healthy\", \"unknown\"]).to.include(i.health_status);",
+                  "    });",
+                  "});",
+                  "pm.test(\"every replica reports its load\", function () {",
+                  "    instances.forEach(function (i) {",
+                  "        if (i.health_status === \"unknown\") { return; }",
+                  "        pm.expect(i.load.active_tasks).to.be.a(\"number\");",
+                  "        pm.expect(i.load.max_concurrent_tasks).to.be.above(0);",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Round-Robin – first request",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{worldId}}/map?unlocked=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{worldId}}",
+                "map"
+              ],
+              "query": [
+                {
+                  "key": "unlocked",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Reads the campus map through the Gateway. `X-Service-Instance` names the replica that answered; it is kept for the next request."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const instance = pm.response.headers.get(\"X-Service-Instance\");",
+                  "pm.test(\"names the replica that answered\", function () {",
+                  "    pm.expect(instance).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set(\"firstInstance\", instance);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Round-Robin – the next request goes to another replica",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/{{worldId}}/map?unlocked=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "{{worldId}}",
+                "map"
+              ],
+              "query": [
+                {
+                  "key": "unlocked",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "The same request again. With two replicas in turn, it is answered by the other one."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"answered by a different replica\", function () {",
+                  "    const instance = pm.response.headers.get(\"X-Service-Instance\");",
+                  "    pm.expect(instance).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(instance).to.not.eql(pm.collectionVariables.get(\"firstInstance\"));",
                   "});"
                 ]
               }
@@ -1765,7 +1912,12 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:8082",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "discoveryUrl",
+      "value": "http://localhost:8500",
       "type": "string"
     },
     {
@@ -1830,6 +1982,11 @@
     },
     {
       "key": "eventId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "firstInstance",
       "value": "",
       "type": "string"
     }

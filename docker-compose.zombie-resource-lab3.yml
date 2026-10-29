@@ -1,0 +1,77 @@
+# Local integration setup: builds source, uses separate volumes from the shared stack.
+# docker compose -f docker-compose.zombie-resource-lab3.yml up -d --build
+name: pad-zombie-resource-lab3
+services:
+  discovery:
+    build: ./services/discovery-service
+    environment:
+      HEALTH_CHECK_INTERVAL_SECONDS: "1"
+      HEALTH_CHECK_TIMEOUT_SECONDS: "2"
+      LOAD_CRITICAL_RATIO: "0.8"
+      ALERT_COOLDOWN_SECONDS: "30"
+    ports:
+      - "127.0.0.1:18500:8080"
+  gateway:
+    build: ./services/gateway-service
+    environment:
+      DISCOVERY_URL: http://discovery:8080
+      DISCOVERY_REFRESH_SECONDS: "1"
+      ZOMBIE_SERVICE_URL: http://zombie-api:8080
+      RESOURCE_SERVICE_URL: http://resource-api:8080
+    ports:
+      - "127.0.0.1:18000:8080"
+    depends_on:
+      - discovery
+  zombie-db:
+    image: postgres:17.6
+    environment:
+      POSTGRES_DB: zombie
+      POSTGRES_USER: zombie
+      POSTGRES_PASSWORD: local-lab3-only
+    volumes:
+      - zombie-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zombie -d zombie"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  resource-db:
+    image: postgres:17.6
+    environment:
+      POSTGRES_DB: resource
+      POSTGRES_USER: resource
+      POSTGRES_PASSWORD: local-lab3-only
+    volumes:
+      - resource-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resource -d resource"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  zombie-api:
+    build: ./services/zombie-service
+    deploy:
+      replicas: 2
+    environment:
+      ConnectionStrings__Database: Host=zombie-db;Database=zombie;Username=zombie;Password=local-lab3-only
+      Database__ApplyMigrationsOnStartup: "true"
+      DISCOVERY_URL: http://discovery:8080
+      Discovery__RegisterIntervalSeconds: "2"
+    depends_on:
+      zombie-db:
+        condition: service_healthy
+  resource-api:
+    build: ./services/resource-service
+    deploy:
+      replicas: 2
+    environment:
+      ConnectionStrings__Database: Host=resource-db;Database=resource;Username=resource;Password=local-lab3-only
+      Database__ApplyMigrationsOnStartup: "true"
+      DISCOVERY_URL: http://discovery:8080
+      Discovery__RegisterIntervalSeconds: "2"
+    depends_on:
+      resource-db:
+        condition: service_healthy
+volumes:
+  zombie-data:
+  resource-data:

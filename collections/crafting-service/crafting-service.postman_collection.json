@@ -2,16 +2,16 @@
     "info": {
         "_postman_id": "9d3b6c1a-4e21-4f0d-9a72-1b6e2f9c8a44",
         "name": "Crafting Service",
-        "description": "Test collection for the Crafting Service (`services/crafting-service`).\n\nRun the folders top to bottom (or use the Collection Runner). **Recipes > Create Recipe** and **Create Second Recipe** create two fresh recipes and store their ids/names as collection variables that the later requests use; **Cleanup** deletes them.\n\nVariable `baseUrl` defaults to `http://localhost:5198` (the `dotnet run` / Docker port).\n\nOnly implemented endpoints are covered (`/api/status` and `/api/recipes` CRUD). `POST /api/crafting/craft` and `GET /api/players/{player_id}/recipes/available` are documented in the service README as planned but not yet implemented.",
+        "description": "Test collection for the Crafting Service (`services/crafting-service`).\n\nCrafting runs as several replicas behind the Gateway. Every request goes to the Gateway (`baseUrl`, `http://localhost:8000`), which reads the Crafting instances from the Discovery Service and sends each request to the next one in turn (Round-Robin). Crafting calls Resource, Player and Exam Service through the Gateway too, so the whole stack has to be running (`docker compose up -d` in the CPR).\n\nRun the folders top to bottom (or use the Collection Runner). **Discovery** checks the Crafting instances are registered; **Setup** registers a player and gives it wood and metal; **Recipes** to **Not Found Cases** cover the recipe CRUD; **Crafting** crafts an item, retries it with the same idempotency key and checks the locked, unaffordable, invalid and unknown cases; **Cleanup** deletes everything the run created.\n\nTo see the balancing, follow `docker logs -f cpr-gateway` while sending requests: every line names the instance a request went to.\n\nVariables: `baseUrl` is the Gateway (`http://localhost:8000`); `discoveryUrl` is the Discovery Service (`http://localhost:8500`). Crafting no longer publishes a port of its own.",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "item": [
         {
-            "name": "Status",
-            "description": "Health check.",
+            "name": "Discovery",
+            "description": "The Crafting instances the Gateway balances among. Crafting's own `/api/status` is no longer reachable from the host (replicas publish no port), and the Gateway answers `/api/status` itself, so registration in Discovery is what shows Crafting is up.",
             "item": [
                 {
-                    "name": "Service Status",
+                    "name": "Crafting Instances in Discovery",
                     "event": [
                         {
                             "listen": "test",
@@ -20,13 +20,14 @@
                                 "exec": [
                                     "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
                                     "const body = pm.response.json();",
-                                    "pm.test(\"service is crafting and status is ok\", () => {",
-                                    "    pm.expect(body.service).to.eql(\"crafting\");",
-                                    "    pm.expect(body.status).to.eql(\"ok\");",
-                                    "});",
-                                    "pm.test(\"uptime_seconds is a non-negative number\", () => {",
-                                    "    pm.expect(body.uptime_seconds).to.be.a(\"number\");",
-                                    "    pm.expect(body.uptime_seconds).to.be.at.least(0);",
+                                    "pm.test(\"lists the crafting service\", () => pm.expect(body.service).to.eql(\"crafting\"));",
+                                    "pm.test(\"at least one instance is registered\", () => pm.expect(body.instances).to.be.an(\"array\").that.is.not.empty);",
+                                    "pm.test(\"every instance is up and has an http address on port 8080\", () => {",
+                                    "    body.instances.forEach(i => {",
+                                    "        pm.expect(i.state).to.eql(\"up\");",
+                                    "        pm.expect(i.address).to.match(/^http:\\/\\/[^/]+:8080$/);",
+                                    "        pm.expect(i.instance_id).to.be.a(\"string\").and.not.empty;",
+                                    "    });",
                                     "});"
                                 ]
                             }
@@ -36,16 +37,253 @@
                         "method": "GET",
                         "header": [],
                         "url": {
-                            "raw": "{{baseUrl}}/api/status",
+                            "raw": "{{discoveryUrl}}/api/registry/services/crafting",
+                            "host": [
+                                "{{discoveryUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "registry",
+                                "services",
+                                "crafting"
+                            ]
+                        },
+                        "description": "Lists the crafting instances registered with Discovery - the ones the Gateway balances requests among (Round-Robin). With the CPR Compose file there are 2. Scale with `docker compose up -d --scale crafting-api=3` and send this again to see a new instance join."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Setup",
+            "description": "Creates, in the other services, what crafting depends on: a player, and wood and metal for it. Sent to the Gateway like everything else.",
+            "item": [
+                {
+                    "name": "Register Player",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set(\"runId\", pm.variables.replaceIn(\"{{$guid}}\").substring(0, 8));"
+                                ]
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"player_id is returned\", () => pm.expect(body.player_id).to.be.a(\"string\").and.not.empty);",
+                                    "pm.collectionVariables.set(\"playerId\", body.player_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players",
                             "host": [
                                 "{{baseUrl}}"
                             ],
                             "path": [
                                 "api",
-                                "status"
+                                "players"
                             ]
                         },
-                        "description": "Health check. Returns the service name, `ok` status and uptime in seconds."
+                        "description": "Creates the player that crafts in this run (Player Service). Also sets `runId`, which keeps the names of everything this run creates unique.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"crafting_test_{{runId}}\",\n    \"email\": \"crafting_test_{{runId}}@utm.md\",\n    \"password\": \"hunter2\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Wood Node",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/resource-nodes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-nodes"
+                            ]
+                        },
+                        "description": "A wood node in Resource Service for the player to gather from.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"node_id\": \"crafting-test-wood-{{runId}}\",\n    \"resource_type\": \"wood\",\n    \"quantity\": 30,\n    \"max_capacity\": 100,\n    \"available\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Metal Node",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/resource-nodes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-nodes"
+                            ]
+                        },
+                        "description": "A metal node in Resource Service. Recipes call it `metal_scraps`; Crafting translates the name.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"node_id\": \"crafting-test-metal-{{runId}}\",\n    \"resource_type\": \"metal\",\n    \"quantity\": 30,\n    \"max_capacity\": 100,\n    \"available\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Gather Wood",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"player now holds 30 wood\", () => pm.expect(pm.response.json().player_quantity).to.eql(30));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/resource-transactions",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-transactions"
+                            ]
+                        },
+                        "description": "Gives the player 30 wood.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"action_id\": \"crafting-test-gather-wood-{{runId}}\",\n    \"player_id\": \"{{playerId}}\",\n    \"node_id\": \"crafting-test-wood-{{runId}}\",\n    \"resource_type\": \"wood\",\n    \"quantity\": 30\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Gather Metal",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"player now holds 30 metal\", () => pm.expect(pm.response.json().player_quantity).to.eql(30));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/resource-transactions",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-transactions"
+                            ]
+                        },
+                        "description": "Gives the player 30 metal.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"action_id\": \"crafting-test-gather-metal-{{runId}}\",\n    \"player_id\": \"{{playerId}}\",\n    \"node_id\": \"crafting-test-metal-{{runId}}\",\n    \"resource_type\": \"metal\",\n    \"quantity\": 30\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
                     }
                 }
             ]
@@ -959,8 +1197,514 @@
             ]
         },
         {
+            "name": "Crafting",
+            "description": "Crafting an item end to end. Depends on **Setup** (the player and its resources). Creates its own three recipes so it does not depend on the CRUD folders.",
+            "item": [
+                {
+                    "name": "Create Craftable Recipe",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set(\"craftRecipeId\", pm.response.json().recipe_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "A recipe with no unlock condition that the player can afford (10 wood, 5 metal_scraps). Saves `craftRecipeId`.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"crafting_test_kit_{{runId}}\",\n    \"inputs\": [\n        {\n            \"resource\": \"wood\",\n            \"amount\": 10\n        },\n        {\n            \"resource\": \"metal_scraps\",\n            \"amount\": 5\n        }\n    ],\n    \"output\": {\n        \"item\": \"crafting_test_kit\",\n        \"quantity\": 1\n    },\n    \"unlock_condition\": {\n        \"type\": \"none\"\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Exam-Locked Recipe",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set(\"lockedRecipeId\", pm.response.json().recipe_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "A recipe locked behind an exam the player has not passed. Saves `lockedRecipeId`.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"crafting_test_locked_{{runId}}\",\n    \"inputs\": [\n        {\n            \"resource\": \"wood\",\n            \"amount\": 1\n        }\n    ],\n    \"output\": {\n        \"item\": \"crafting_test_locked\",\n        \"quantity\": 1\n    },\n    \"unlock_condition\": {\n        \"type\": \"exam_passed\",\n        \"course_id\": \"crafting_test_course_{{runId}}\"\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Create Expensive Recipe",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set(\"expensiveRecipeId\", pm.response.json().recipe_id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes"
+                            ]
+                        },
+                        "description": "A recipe the player cannot afford (1000 wood). Saves `expensiveRecipeId`.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"crafting_test_expensive_{{runId}}\",\n    \"inputs\": [\n        {\n            \"resource\": \"wood\",\n            \"amount\": 1000\n        }\n    ],\n    \"output\": {\n        \"item\": \"crafting_test_expensive\",\n        \"quantity\": 1\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Available Recipes for Player",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                                    "const body = pm.response.json();",
+                                    "const ids = body.recipes.map(r => r.recipe_id);",
+                                    "pm.test(\"answers for the requested player\", () => pm.expect(body.player_id).to.eql(pm.collectionVariables.get(\"playerId\")));",
+                                    "pm.test(\"the craftable recipe is available\", () => pm.expect(ids).to.include(pm.collectionVariables.get(\"craftRecipeId\")));",
+                                    "pm.test(\"the exam-locked recipe is not available\", () => pm.expect(ids).to.not.include(pm.collectionVariables.get(\"lockedRecipeId\")));",
+                                    "pm.test(\"entries leave out unlock_condition\", () => body.recipes.forEach(r => pm.expect(r).to.not.have.property(\"unlock_condition\")));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerId}}/recipes/available",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerId}}",
+                                "recipes",
+                                "available"
+                            ]
+                        },
+                        "description": "Recipes the player may craft now. Crafting asks Exam Service for the player's passed exams, so the exam-locked recipe is left out."
+                    }
+                },
+                {
+                    "name": "Craft Item",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set(\"craftKey\", \"crafting-test-\" + pm.collectionVariables.get(\"runId\"));"
+                                ]
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"craft_id is the idempotency key\", () => pm.expect(body.craft_id).to.eql(pm.collectionVariables.get(\"craftKey\")));",
+                                    "pm.test(\"the recipe's output item is granted\", () => {",
+                                    "    pm.expect(body.item_granted.type).to.eql(\"crafting_test_kit\");",
+                                    "    pm.expect(body.item_granted.item_id).to.be.a(\"string\").and.not.empty;",
+                                    "});",
+                                    "pm.test(\"the recipe's inputs are spent\", () => pm.expect(body.resources_spent).to.eql({ wood: 10, metal_scraps: 5 }));",
+                                    "pm.test(\"crafted_at is a timestamp\", () => pm.expect(Date.parse(body.crafted_at)).to.not.be.NaN);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/crafting/craft",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "crafting",
+                                "craft"
+                            ]
+                        },
+                        "description": "Crafts the craftable recipe: Crafting spends the resources in Resource Service and grants the item in Player Service. Saves `craftKey`, the idempotency key.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"player_id\": \"{{playerId}}\",\n    \"recipe_id\": \"{{craftRecipeId}}\",\n    \"idempotency_key\": \"{{craftKey}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Craft Item - Same Key (200)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "pm.test(\"the craft is reported as already processed\", () => {",
+                                    "    pm.expect(pm.response.json()).to.eql({ craft_id: pm.collectionVariables.get(\"craftKey\"), status: \"already_processed\" });",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/crafting/craft",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "crafting",
+                                "craft"
+                            ]
+                        },
+                        "description": "The same idempotency key again, as a retry would send it. Nothing is spent or granted twice.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"player_id\": \"{{playerId}}\",\n    \"recipe_id\": \"{{craftRecipeId}}\",\n    \"idempotency_key\": \"{{craftKey}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Resources Were Spent Once",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "const held = {};",
+                                    "pm.response.json().resources.forEach(r => held[r.resource_type] = r.quantity);",
+                                    "pm.test(\"10 wood and 5 metal were taken, once\", () => {",
+                                    "    pm.expect(held.wood).to.eql(20);",
+                                    "    pm.expect(held.metal).to.eql(25);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/players/{{playerId}}/resources",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "players",
+                                "{{playerId}}",
+                                "resources"
+                            ]
+                        },
+                        "description": "Reads the balance from Resource Service: the craft took its inputs once, the retry took nothing."
+                    }
+                },
+                {
+                    "name": "Craft Item - Recipe Locked (409)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 409 Conflict\", () => pm.response.to.have.status(409));",
+                                    "const body = pm.response.json();",
+                                    "pm.test(\"error is recipe_locked because the exam is not passed\", () => {",
+                                    "    pm.expect(body.error).to.eql(\"recipe_locked\");",
+                                    "    pm.expect(body.reason).to.eql(\"exam_not_passed\");",
+                                    "    pm.expect(body.required_course_id).to.eql(\"crafting_test_course_\" + pm.collectionVariables.get(\"runId\"));",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/crafting/craft",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "crafting",
+                                "craft"
+                            ]
+                        },
+                        "description": "The exam-locked recipe: Exam Service has no passed exam for that course.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"player_id\": \"{{playerId}}\",\n    \"recipe_id\": \"{{lockedRecipeId}}\",\n    \"idempotency_key\": \"crafting-test-locked-{{runId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Craft Item - Insufficient Resources (409)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 409 Conflict\", () => pm.response.to.have.status(409));",
+                                    "pm.test(\"error is insufficient_resources\", () => pm.expect(pm.response.json().error).to.eql(\"insufficient_resources\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/crafting/craft",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "crafting",
+                                "craft"
+                            ]
+                        },
+                        "description": "The expensive recipe: Resource Service refuses to spend 1000 wood.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"player_id\": \"{{playerId}}\",\n    \"recipe_id\": \"{{expensiveRecipeId}}\",\n    \"idempotency_key\": \"crafting-test-expensive-{{runId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Craft Item - Missing Fields (400)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                                    "pm.test(\"error is invalid_craft_request\", () => pm.expect(pm.response.json().error).to.eql(\"invalid_craft_request\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/crafting/craft",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "crafting",
+                                "craft"
+                            ]
+                        },
+                        "description": "No `idempotency_key`.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"player_id\": \"{{playerId}}\",\n    \"recipe_id\": \"{{craftRecipeId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Craft Item - Unknown Recipe (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 404 Not Found\", () => pm.response.to.have.status(404));",
+                                    "pm.test(\"error is recipe_not_found\", () => pm.expect(pm.response.json().error).to.eql(\"recipe_not_found\"));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/crafting/craft",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "crafting",
+                                "craft"
+                            ]
+                        },
+                        "description": "A well-formed but unknown recipe id.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"player_id\": \"{{playerId}}\",\n    \"recipe_id\": \"{{$guid}}\",\n    \"idempotency_key\": \"crafting-test-unknown-{{$guid}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
             "name": "Cleanup",
-            "description": "Deletes the recipes created by this run. Keep this folder last.",
+            "description": "Deletes the recipes and resource nodes created by this run. Keep this folder last.",
             "item": [
                 {
                     "name": "Delete Recipe",
@@ -1054,6 +1798,156 @@
                         },
                         "description": "Confirms the primary recipe is gone."
                     }
+                },
+                {
+                    "name": "Delete Craftable Recipe",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes/{{craftRecipeId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes",
+                                "{{craftRecipeId}}"
+                            ]
+                        },
+                        "description": "Deletes the craftable recipe."
+                    }
+                },
+                {
+                    "name": "Delete Exam-Locked Recipe",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes/{{lockedRecipeId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes",
+                                "{{lockedRecipeId}}"
+                            ]
+                        },
+                        "description": "Deletes the exam-locked recipe."
+                    }
+                },
+                {
+                    "name": "Delete Expensive Recipe",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/recipes/{{expensiveRecipeId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "recipes",
+                                "{{expensiveRecipeId}}"
+                            ]
+                        },
+                        "description": "Deletes the expensive recipe."
+                    }
+                },
+                {
+                    "name": "Delete Wood Node",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/resource-nodes/crafting-test-wood-{{runId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-nodes",
+                                "crafting-test-wood-{{runId}}"
+                            ]
+                        },
+                        "description": "Deletes the wood node from Resource Service."
+                    }
+                },
+                {
+                    "name": "Delete Metal Node",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"status is 204 No Content\", () => pm.response.to.have.status(204));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/resource-nodes/crafting-test-metal-{{runId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "resource-nodes",
+                                "crafting-test-metal-{{runId}}"
+                            ]
+                        },
+                        "description": "Deletes the metal node from Resource Service."
+                    }
                 }
             ]
         }
@@ -1061,7 +1955,7 @@
     "variable": [
         {
             "key": "baseUrl",
-            "value": "http://localhost:5198",
+            "value": "http://localhost:8000",
             "type": "string"
         },
         {
@@ -1083,6 +1977,34 @@
             "key": "secondaryRecipeId",
             "value": "",
             "type": "string"
+        },
+        {
+            "key": "discoveryUrl",
+            "value": "http://localhost:8500"
+        },
+        {
+            "key": "runId",
+            "value": ""
+        },
+        {
+            "key": "playerId",
+            "value": ""
+        },
+        {
+            "key": "craftRecipeId",
+            "value": ""
+        },
+        {
+            "key": "lockedRecipeId",
+            "value": ""
+        },
+        {
+            "key": "expensiveRecipeId",
+            "value": ""
+        },
+        {
+            "key": "craftKey",
+            "value": ""
         }
     ]
 }

@@ -2,16 +2,16 @@
     "info": {
         "_postman_id": "6f0c1f0e-5b1a-4a53-9a55-3c6a8f5b7d21",
         "name": "Base Service",
-        "description": "Test collection for the Base Service (`services/base-service`).\n\nBase no longer runs on mocks: reinforcing asks World Service whether the room is unlocked, reinforcing and upgrading spend the player's resources in Resource Service, and Kiki grants its reward through Player Service - all through the Gateway. The whole stack therefore has to be running (`docker compose up -d` in the CPR).\n\nRun the folders top to bottom (or use the Collection Runner). **Setup** registers a player and gives it resources, **Bases > Create Base** creates a base whose ids the later requests use, and **Cleanup** deletes everything the run created.\n\nVariables: `baseUrl` is Base Service itself (`http://localhost:5076`); `gatewayUrl` is the Gateway (`http://localhost:8000`), used for the requests that belong to other services. `baseUrl` can be pointed at the Gateway too - every request then goes through it - except that **Status** will fail, because the Gateway answers `/api/status` itself.",
+        "description": "Test collection for the Base Service (`services/base-service`).\n\nBase runs as several replicas behind the Gateway. Every request goes to the Gateway (`baseUrl`, `http://localhost:8000`), which reads the Base instances from the Discovery Service and sends each request to the next one in turn (Round-Robin). Base itself calls World, Resource and Player Service through the Gateway too. The whole stack therefore has to be running (`docker compose up -d` in the CPR).\n\nRun the folders top to bottom (or use the Collection Runner). **Discovery** checks the Base instances are registered, **Setup** registers a player and gives it resources, **Bases > Create Base** creates a base whose ids the later requests use, and **Cleanup** deletes everything the run created.\n\nTo see the balancing, follow `docker logs -f cpr-gateway` while sending requests: every line names the instance a request went to. The second Kiki request, for example, usually lands on another replica and still sees the cooldown, because the state lives in the shared database.\n\nVariables: `baseUrl` is the Gateway (`http://localhost:8000`); `discoveryUrl` is the Discovery Service (`http://localhost:8500`). Base no longer publishes a port of its own.",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "item": [
         {
-            "name": "Status",
-            "description": "Health check.",
+            "name": "Discovery",
+            "description": "The Base instances the Gateway balances among. Base's own `/api/status` is no longer reachable from the host (replicas publish no port), and the Gateway answers `/api/status` itself, so registration in Discovery is what shows Base is up.",
             "item": [
                 {
-                    "name": "Service Status",
+                    "name": "Base Instances in Discovery",
                     "event": [
                         {
                             "listen": "test",
@@ -20,13 +20,14 @@
                                 "exec": [
                                     "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
                                     "const body = pm.response.json();",
-                                    "pm.test(\"service is base and status is ok\", () => {",
-                                    "    pm.expect(body.service).to.eql(\"base\");",
-                                    "    pm.expect(body.status).to.eql(\"ok\");",
-                                    "});",
-                                    "pm.test(\"uptime_seconds is a non-negative number\", () => {",
-                                    "    pm.expect(body.uptime_seconds).to.be.a(\"number\");",
-                                    "    pm.expect(body.uptime_seconds).to.be.at.least(0);",
+                                    "pm.test(\"lists the base service\", () => pm.expect(body.service).to.eql(\"base\"));",
+                                    "pm.test(\"at least one instance is registered\", () => pm.expect(body.instances).to.be.an(\"array\").that.is.not.empty);",
+                                    "pm.test(\"every instance is up and has an http address on port 8080\", () => {",
+                                    "    body.instances.forEach(i => {",
+                                    "        pm.expect(i.state).to.eql(\"up\");",
+                                    "        pm.expect(i.address).to.match(/^http:\\/\\/[^/]+:8080$/);",
+                                    "        pm.expect(i.instance_id).to.be.a(\"string\").and.not.empty;",
+                                    "    });",
                                     "});"
                                 ]
                             }
@@ -36,16 +37,18 @@
                         "method": "GET",
                         "header": [],
                         "url": {
-                            "raw": "{{baseUrl}}/api/status",
+                            "raw": "{{discoveryUrl}}/api/registry/services/base",
                             "host": [
-                                "{{baseUrl}}"
+                                "{{discoveryUrl}}"
                             ],
                             "path": [
                                 "api",
-                                "status"
+                                "registry",
+                                "services",
+                                "base"
                             ]
                         },
-                        "description": "Health check. Returns the service name, `ok` status and uptime in seconds."
+                        "description": "Lists the base instances registered with Discovery - the ones the Gateway balances requests among (Round-Robin). With the CPR Compose file there are 2. Scale with `docker compose up -d --scale base-api=3` and send this again to see a new instance join."
                     }
                 }
             ]
@@ -88,9 +91,9 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{gatewayUrl}}/api/players",
+                            "raw": "{{baseUrl}}/api/players",
                             "host": [
-                                "{{gatewayUrl}}"
+                                "{{baseUrl}}"
                             ],
                             "path": [
                                 "api",
@@ -131,9 +134,9 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{gatewayUrl}}/api/resource-nodes",
+                            "raw": "{{baseUrl}}/api/resource-nodes",
                             "host": [
-                                "{{gatewayUrl}}"
+                                "{{baseUrl}}"
                             ],
                             "path": [
                                 "api",
@@ -174,9 +177,9 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{gatewayUrl}}/api/resource-nodes",
+                            "raw": "{{baseUrl}}/api/resource-nodes",
                             "host": [
-                                "{{gatewayUrl}}"
+                                "{{baseUrl}}"
                             ],
                             "path": [
                                 "api",
@@ -217,9 +220,9 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{gatewayUrl}}/api/resource-nodes",
+                            "raw": "{{baseUrl}}/api/resource-nodes",
                             "host": [
-                                "{{gatewayUrl}}"
+                                "{{baseUrl}}"
                             ],
                             "path": [
                                 "api",
@@ -261,9 +264,9 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{gatewayUrl}}/api/resource-transactions",
+                            "raw": "{{baseUrl}}/api/resource-transactions",
                             "host": [
-                                "{{gatewayUrl}}"
+                                "{{baseUrl}}"
                             ],
                             "path": [
                                 "api",
@@ -305,9 +308,9 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{gatewayUrl}}/api/resource-transactions",
+                            "raw": "{{baseUrl}}/api/resource-transactions",
                             "host": [
-                                "{{gatewayUrl}}"
+                                "{{baseUrl}}"
                             ],
                             "path": [
                                 "api",
@@ -349,9 +352,9 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{gatewayUrl}}/api/resource-transactions",
+                            "raw": "{{baseUrl}}/api/resource-transactions",
                             "host": [
-                                "{{gatewayUrl}}"
+                                "{{baseUrl}}"
                             ],
                             "path": [
                                 "api",
@@ -673,9 +676,9 @@
                         "method": "GET",
                         "header": [],
                         "url": {
-                            "raw": "{{gatewayUrl}}/api/players/{{playerId}}/resources",
+                            "raw": "{{baseUrl}}/api/players/{{playerId}}/resources",
                             "host": [
-                                "{{gatewayUrl}}"
+                                "{{baseUrl}}"
                             ],
                             "path": [
                                 "api",
@@ -1426,9 +1429,9 @@
                         "method": "DELETE",
                         "header": [],
                         "url": {
-                            "raw": "{{gatewayUrl}}/api/resource-nodes/base-test-wood-{{runId}}",
+                            "raw": "{{baseUrl}}/api/resource-nodes/base-test-wood-{{runId}}",
                             "host": [
-                                "{{gatewayUrl}}"
+                                "{{baseUrl}}"
                             ],
                             "path": [
                                 "api",
@@ -1456,9 +1459,9 @@
                         "method": "DELETE",
                         "header": [],
                         "url": {
-                            "raw": "{{gatewayUrl}}/api/resource-nodes/base-test-metal-{{runId}}",
+                            "raw": "{{baseUrl}}/api/resource-nodes/base-test-metal-{{runId}}",
                             "host": [
-                                "{{gatewayUrl}}"
+                                "{{baseUrl}}"
                             ],
                             "path": [
                                 "api",
@@ -1486,9 +1489,9 @@
                         "method": "DELETE",
                         "header": [],
                         "url": {
-                            "raw": "{{gatewayUrl}}/api/resource-nodes/base-test-paper-{{runId}}",
+                            "raw": "{{baseUrl}}/api/resource-nodes/base-test-paper-{{runId}}",
                             "host": [
-                                "{{gatewayUrl}}"
+                                "{{baseUrl}}"
                             ],
                             "path": [
                                 "api",
@@ -1505,7 +1508,7 @@
     "variable": [
         {
             "key": "baseUrl",
-            "value": "http://localhost:5076",
+            "value": "http://localhost:8000",
             "type": "string"
         },
         {
@@ -1534,10 +1537,6 @@
             "type": "string"
         },
         {
-            "key": "gatewayUrl",
-            "value": "http://localhost:8000"
-        },
-        {
             "key": "worldRoomId",
             "value": "room_library"
         },
@@ -1564,6 +1563,10 @@
         {
             "key": "poorRoomId",
             "value": ""
+        },
+        {
+            "key": "discoveryUrl",
+            "value": "http://localhost:8500"
         }
     ]
 }
