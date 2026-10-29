@@ -14,9 +14,6 @@ PAD Team 2's Common Public Repository
 
 ![PAD architecture](docs/images/diagram.drawio.png)
 
-The file is a draw.io export with the source embedded, so it opens for editing
-at <https://app.diagrams.net> as it is - there is no second file to keep in sync.
-
 ## Running the Stack
 
 Everything runs from the Compose file in this repository. It pulls prebuilt
