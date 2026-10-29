@@ -6,7 +6,7 @@ services:
     # Gateway
     # ---------------------------------------------------------------------
     gateway:
-        image: gheorghe2973/gateway-service:3.0.1-dev
+        image: gheorghe2973/gateway-service:3.1.0-dev
         container_name: cpr-gateway
         restart: unless-stopped
         environment:
@@ -31,7 +31,7 @@ services:
     # The registry instances join on startup. It keeps no data of its own:
     # the registry lives in memory and the instances rebuild it by registering again.
     discovery:
-        image: ion04/discovery-service:3.0.2
+        image: ion04/discovery-service:3.1.0
         container_name: cpr-discovery
         restart: unless-stopped
         environment:
@@ -312,7 +312,7 @@ services:
             # the event is balanced across the World replicas.
             EXAM_PASSED_SUBSCRIBERS: http://gateway:8080/api/events/exam-passed
             DISCOVERY_URL: http://discovery:8080
-            REGISTER_INTERVAL_SECONDS: "10"
+            REGISTER_INTERVAL_SECONDS: "2"
         depends_on:
             exam-db:
                 condition: service_healthy
@@ -353,7 +353,7 @@ services:
             SEED_ON_START: "true"
             SECTION_UNLOCKED_SUBSCRIBERS: ""
             DISCOVERY_URL: http://discovery:8080
-            REGISTER_INTERVAL_SECONDS: "10"
+            REGISTER_INTERVAL_SECONDS: "2"
         depends_on:
             world-db:
                 condition: service_healthy
