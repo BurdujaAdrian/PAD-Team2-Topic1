@@ -6,7 +6,7 @@ services:
     # Gateway
     # ---------------------------------------------------------------------
     gateway:
-        image: gheorghe2973/gateway-service:3.1.0-dev
+        image: gheorghe2973/gateway-service:3.2.0
         container_name: cpr-gateway
         restart: unless-stopped
         environment:
