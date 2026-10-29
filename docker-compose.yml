@@ -225,7 +225,7 @@ services:
             start_period: 5s
 
     game-service-1:
-        image: adrianburduja/game-service:0.2.5
+        image: adrianburduja/game-service:3.2.5
         restart: unless-stopped
         depends_on:
             game-db:
@@ -239,7 +239,7 @@ services:
         ports:
             - "8086:8080"
     game-service-2:
-        image: adrianburduja/game-service:0.2.5
+        image: adrianburduja/game-service:3.2.5
         restart: unless-stopped
         depends_on:
             game-db:
@@ -279,7 +279,7 @@ services:
 
     player-service:
         # 0.0.2 is not published on Docker Hub; 0.0.1 is the latest version tag.
-        image: adrianburduja/player-service:0.2.4
+        image: adrianburduja/player-service:3.2.4
         restart: unless-stopped
         depends_on:
             player-db:
