@@ -2,7 +2,7 @@
     "info": {
         "_postman_id": "9d3b6c1a-4e21-4f0d-9a72-1b6e2f9c8a44",
         "name": "Crafting Service",
-        "description": "Test collection for the Crafting Service (`services/crafting-service`).\n\nCrafting runs as several replicas behind the Gateway. Every request goes to the Gateway (`baseUrl`, `http://localhost:8000`), which reads the Crafting instances from the Discovery Service and sends each request to the next one in turn (Round-Robin). Crafting calls Resource, Player and Exam Service through the Gateway too, so the whole stack has to be running (`docker compose up -d` in the CPR).\n\nRun the folders top to bottom (or use the Collection Runner). **Discovery** checks the Crafting instances are registered; **Setup** registers a player and gives it wood and metal; **Recipes** to **Not Found Cases** cover the recipe CRUD; **Crafting** crafts an item, retries it with the same idempotency key and checks the locked, unaffordable, invalid and unknown cases; **Cleanup** deletes everything the run created.\n\nTo see the balancing, follow `docker logs -f cpr-gateway` while sending requests: every line names the instance a request went to.\n\nVariables: `baseUrl` is the Gateway (`http://localhost:8000`); `discoveryUrl` is the Discovery Service (`http://localhost:8500`). Crafting no longer publishes a port of its own.",
+        "description": "Test collection for the Crafting Service (`services/crafting-service`).\n\nCrafting runs as several replicas behind the Gateway. Every request goes to the Gateway (`baseUrl`, `http://localhost:8000`), which forwards to the Broker for load-based instance selection. Crafting calls Resource, Player and Exam through the Broker, so the whole stack has to be running (`docker compose up -d` in the CPR).\n\nRun the folders top to bottom (or use the Collection Runner). **Discovery** checks the Crafting instances are registered; **Setup** registers a player and gives it wood and metal; **Recipes** to **Not Found Cases** cover the recipe CRUD; **Crafting** crafts an item, retries it with the same idempotency key and checks the locked, unaffordable, invalid and unknown cases; **Cleanup** deletes everything the run created.\n\nTo see the balancing, follow `docker logs -f cpr-broker` while sending requests: every line names the instance a request went to.\n\nVariables: `baseUrl` is the Gateway (`http://localhost:8000`); `discoveryUrl` is the Discovery Service (`http://localhost:8500`). Crafting no longer publishes a port of its own.",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "item": [
@@ -48,7 +48,7 @@
                                 "crafting"
                             ]
                         },
-                        "description": "Lists the crafting instances registered with Discovery - the ones the Gateway balances requests among (Round-Robin). With the CPR Compose file there are 2. Scale with `docker compose up -d --scale crafting-api=3` and send this again to see a new instance join."
+                        "description": "Lists the crafting instances registered with Discovery - the ones the Broker selects by load. With the CPR Compose file there are 2. Scale with `docker compose up -d --scale crafting-api=3` and send this again to see a new instance join."
                     }
                 }
             ]

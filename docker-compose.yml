@@ -1,29 +1,52 @@
 # Common deployment for PAD Team 2's services.
 # teammate's service is pulled as a prebuilt image from DockerHub.
 
+# Docker forwards container stdout/stderr to the Broker's bounded log archive.
+# The local Docker cache remains available through `docker compose logs`.
+x-system-logging: &system-logging
+    driver: syslog
+    options:
+        syslog-address: "udp://127.0.0.1:${SYSLOG_HOST_PORT:-15514}"
+        syslog-format: rfc5424micro
+        tag: "{{.Name}}"
+
 services:
     # ---------------------------------------------------------------------
     # Gateway
     # ---------------------------------------------------------------------
     gateway:
-        image: gheorghe2973/gateway-service:3.2.0
+        logging: *system-logging
+        image: gheorghe2973/gateway-service:4.0.0-dev
         container_name: cpr-gateway
         restart: unless-stopped
         environment:
-            EXAM_SERVICE_URL: http://exam-api:8080
-            WORLD_SERVICE_URL: http://world-api:8080
-            PLAYER_SERVICE_URL: http://player-service:8080
-            GAME_SERVICE_URL: http://game-service:8080
-            BASE_SERVICE_URL: http://base-api:8080
-            CRAFTING_SERVICE_URL: http://crafting-api:8080
-            ZOMBIE_SERVICE_URL: http://zombie-api:8080
-            RESOURCE_SERVICE_URL: http://resource-api:8080
-            WS_TICKET_SECRET: ${WS_TICKET_SECRET}
-            # Services that register here (Base, Crafting) are reached through their
-            # instances in turn (Round-Robin); the URLs above are the fallback.
-            DISCOVERY_URL: http://discovery:8080
+            BROKER_URL: http://broker:8080
+            TASK_TIMEOUT_SECONDS: 30
+            WS_TICKET_SECRET: ${WS_TICKET_SECRET:-}
+        depends_on:
+            broker:
+                condition: service_healthy
         ports:
             - "8000:8080"
+
+    # Message Broker: routing, breakers, durable event queues and system logs.
+    broker:
+        logging: *system-logging
+        image: ion04/message-broker:4.1.0-dev
+        container_name: cpr-broker
+        restart: unless-stopped
+        environment:
+            DISCOVERY_URL: http://discovery:8080
+            TASK_TIMEOUT_SECONDS: 5
+            MAX_FAILOVER_ATTEMPTS: 3
+            SYSLOG_ENABLED: "1"
+            LOG_DOWNLOAD_TOKEN: ${LOG_DOWNLOAD_TOKEN:-}
+        ports:
+            - "127.0.0.1:8600:8080"
+            - "127.0.0.1:50050:50050"
+            - "127.0.0.1:${SYSLOG_HOST_PORT:-15514}:5514/udp"
+        volumes:
+            - broker_data:/app/data
 
     # ---------------------------------------------------------------------
     # Discovery Service
@@ -31,7 +54,11 @@ services:
     # The registry instances join on startup. It keeps no data of its own:
     # the registry lives in memory and the instances rebuild it by registering again.
     discovery:
-        image: ion04/discovery-service:3.1.0
+        logging: *system-logging
+        depends_on:
+            broker:
+                condition: service_healthy
+        image: ion04/discovery-service:4.0.0
         container_name: cpr-discovery
         restart: unless-stopped
         environment:
@@ -47,6 +74,10 @@ services:
     # Base Service
     # ---------------------------------------------------------------------
     base-db:
+        logging: *system-logging
+        depends_on:
+            broker:
+                condition: service_healthy
         image: postgres:16
         container_name: cpr-base-postgres
         restart: unless-stopped
@@ -65,6 +96,7 @@ services:
             retries: 5
 
     base-api:
+        logging: *system-logging
         image: ion04/base-service:3.2.0
         restart: unless-stopped
         # Two instances sharing base-db. No container_name and no host port:
@@ -74,12 +106,14 @@ services:
         environment:
             ASPNETCORE_ENVIRONMENT: Production
             ConnectionStrings__DefaultConnection: Host=base-db;Port=5432;Database=${BASE_POSTGRES_DB};Username=${BASE_POSTGRES_USER};Password=${BASE_POSTGRES_PASSWORD}
-            # Every call to World, Resource and Player goes through the Gateway.
+            # Legacy GATEWAY_URL now points to the Broker for internal REST calls.
             # Required: the service refuses to start without it.
-            GATEWAY_URL: http://gateway:8080
-            # Each replica registers here on startup so the Gateway can find it.
+            GATEWAY_URL: http://broker:8080
+            # Each replica registers here on startup so the Broker can find it.
             DISCOVERY_URL: http://discovery:8080
         depends_on:
+            broker:
+                condition: service_healthy
             base-db:
                 condition: service_healthy
 
@@ -87,6 +121,10 @@ services:
     # Crafting Service
     # ---------------------------------------------------------------------
     crafting-db:
+        logging: *system-logging
+        depends_on:
+            broker:
+                condition: service_healthy
         image: postgres:17
         container_name: cpr-crafting-postgres
         restart: unless-stopped
@@ -105,6 +143,7 @@ services:
             retries: 10
 
     crafting-api:
+        logging: *system-logging
         image: ion04/crafting-service:3.2.0
         restart: unless-stopped
         # Two instances sharing crafting-db. No container_name and no host port:
@@ -119,10 +158,12 @@ services:
             POSTGRES_PORT: 5432
             # Every call to Resource, Player and Exam goes through the Gateway.
             # Required: the service refuses to start without it.
-            GATEWAY_URL: http://gateway:8080
-            # Each replica registers here on startup so the Gateway can find it.
+            GATEWAY_URL: http://broker:8080
+            # Each replica registers here on startup so the Broker can find it.
             DISCOVERY_URL: http://discovery:8080
         depends_on:
+            broker:
+                condition: service_healthy
             crafting-db:
                 condition: service_healthy
 
@@ -130,6 +171,10 @@ services:
     # Zombie Service
     # ---------------------------------------------------------------------
     zombie-db:
+        logging: *system-logging
+        depends_on:
+            broker:
+                condition: service_healthy
         image: postgres:17
         container_name: cpr-zombie-postgres
         restart: unless-stopped
@@ -148,6 +193,7 @@ services:
             retries: 5
 
     zombie-api:
+        logging: *system-logging
         image: susanito88/zombie-service:3.0.1
         restart: unless-stopped
         # Two instances sharing zombie-db. No container_name and no host port:
@@ -157,9 +203,11 @@ services:
         environment:
             ConnectionStrings__Database: Host=zombie-db;Port=5432;Database=${ZOMBIE_POSTGRES_DB};Username=${ZOMBIE_POSTGRES_USER};Password=${ZOMBIE_POSTGRES_PASSWORD}
             Database__ApplyMigrationsOnStartup: "true"
-            # Each replica registers here on startup so the Gateway can find it.
+            # Each replica registers here on startup so the Broker can find it.
             DISCOVERY_URL: http://discovery:8080
         depends_on:
+            broker:
+                condition: service_healthy
             zombie-db:
                 condition: service_healthy
 
@@ -167,6 +215,10 @@ services:
     # Resource Service
     # ---------------------------------------------------------------------
     resource-db:
+        logging: *system-logging
+        depends_on:
+            broker:
+                condition: service_healthy
         image: postgres:17
         container_name: cpr-resource-postgres
         restart: unless-stopped
@@ -185,6 +237,7 @@ services:
             retries: 5
 
     resource-api:
+        logging: *system-logging
         image: susanito88/resource-service:3.0.1
         restart: unless-stopped
         # Two instances sharing resource-db. No container_name and no host port:
@@ -194,9 +247,11 @@ services:
         environment:
             ConnectionStrings__Database: Host=resource-db;Port=5432;Database=${RESOURCE_POSTGRES_DB};Username=${RESOURCE_POSTGRES_USER};Password=${RESOURCE_POSTGRES_PASSWORD}
             Database__ApplyMigrationsOnStartup: "true"
-            # Each replica registers here on startup so the Gateway can find it.
+            # Each replica registers here on startup so the Broker can find it.
             DISCOVERY_URL: http://discovery:8080
         depends_on:
+            broker:
+                condition: service_healthy
             resource-db:
                 condition: service_healthy
 
@@ -204,6 +259,10 @@ services:
     # Game Service
     # ---------------------------------------------------------------------
     game-db:
+        logging: *system-logging
+        depends_on:
+            broker:
+                condition: service_healthy
         image: rqlite/rqlite:10.3.6
         container_name: cpr-game-db
         restart: unless-stopped
@@ -225,9 +284,12 @@ services:
             start_period: 5s
 
     game-service-1:
+        logging: *system-logging
         image: adrianburduja/game-service:3.2.5
         restart: unless-stopped
         depends_on:
+            broker:
+                condition: service_healthy
             game-db:
                 condition: service_healthy
         environment:
@@ -239,16 +301,19 @@ services:
         ports:
             - "8086:8080"
     game-service-2:
+        logging: *system-logging
         image: adrianburduja/game-service:3.2.5
         restart: unless-stopped
         depends_on:
+            broker:
+                condition: service_healthy
             game-db:
                 condition: service_healthy
         environment:
             - DB_DSN=http://game-db:4001
             - WS_TICKET_SECRET=${WS_TICKET_SECRET}
-            - WS_PUBLIC_ADDRESS=http://localhost:8086
-            - INSTANCE_ID=game-service-1
+            - WS_PUBLIC_ADDRESS=http://localhost:8087
+            - INSTANCE_ID=game-service-2
             - DISCOVERY_URL=http://discovery:8080
         ports:
             - "8087:8080"
@@ -257,6 +322,10 @@ services:
     # Player Service
     # ---------------------------------------------------------------------
     player-db:
+        logging: *system-logging
+        depends_on:
+            broker:
+                condition: service_healthy
         image: rqlite/rqlite:10.3.6
         container_name: cpr-player-db
         restart: unless-stopped
@@ -278,10 +347,13 @@ services:
             start_period: 5s
 
     player-service:
+        logging: *system-logging
         # 0.0.2 is not published on Docker Hub; 0.0.1 is the latest version tag.
         image: adrianburduja/player-service:3.2.4
         restart: unless-stopped
         depends_on:
+            broker:
+                condition: service_healthy
             player-db:
                 condition: service_healthy
         deploy:
@@ -294,6 +366,10 @@ services:
     # Exam Service
     # ---------------------------------------------------------------------
     exam-db:
+        logging: *system-logging
+        depends_on:
+            broker:
+                condition: service_healthy
         image: rqlite/rqlite:10.3.6
         container_name: cpr-exam-rqlite
         restart: unless-stopped
@@ -314,6 +390,7 @@ services:
             retries: 5
 
     exam-api:
+        logging: *system-logging
         image: gheorghe2973/exam-service:3.1.0
         restart: unless-stopped
         # Two instances sharing exam-db. No container_name and no host port:
@@ -330,6 +407,8 @@ services:
             DISCOVERY_URL: http://discovery:8080
             REGISTER_INTERVAL_SECONDS: "2"
         depends_on:
+            broker:
+                condition: service_healthy
             exam-db:
                 condition: service_healthy
 
@@ -337,6 +416,10 @@ services:
     # World Service
     # ---------------------------------------------------------------------
     world-db:
+        logging: *system-logging
+        depends_on:
+            broker:
+                condition: service_healthy
         image: rqlite/rqlite:10.3.6
         container_name: cpr-world-rqlite
         restart: unless-stopped
@@ -357,6 +440,7 @@ services:
             retries: 5
 
     world-api:
+        logging: *system-logging
         image: gheorghe2973/world-service:3.1.0
         restart: unless-stopped
         # Two instances sharing world-db. No container_name and no host port:
@@ -371,10 +455,13 @@ services:
             DISCOVERY_URL: http://discovery:8080
             REGISTER_INTERVAL_SECONDS: "2"
         depends_on:
+            broker:
+                condition: service_healthy
             world-db:
                 condition: service_healthy
 
 volumes:
+    broker_data:
     base_pgdata:
     crafting_pgdata:
     zombie_pgdata:

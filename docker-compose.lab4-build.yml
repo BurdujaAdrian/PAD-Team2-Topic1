@@ -1,0 +1,12 @@
+# Build the shared Lab 4 components before their new images have been published.
+# docker compose -f docker-compose.yml -f docker-compose.lab4-build.yml up -d --build
+services:
+    gateway:
+        build: ./services/gateway-service
+        pull_policy: build
+    broker:
+        build: ./services/message-broker
+        pull_policy: build
+    discovery:
+        build: ./services/discovery-service
+        pull_policy: build

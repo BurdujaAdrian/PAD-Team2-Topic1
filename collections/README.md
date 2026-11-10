@@ -29,15 +29,15 @@ npx newman run collections/base-service/base-service.postman_collection.json -e 
 
 ## Base, Crafting and Discovery
 
-Base and Crafting run as several replicas without a port of their own, so their collections send every request to the Gateway (`baseUrl` = `http://localhost:8000`), which balances them among the instances registered in Discovery. The whole stack has to be running (`docker compose up -d` in the CPR). Each collection starts with a **Discovery** folder that checks the instances are registered (`discoveryUrl` = `http://localhost:8500`).
+Base and Crafting run as several replicas without a port of their own, so their collections send every request to the Gateway (`baseUrl` = `http://localhost:8000`), which forwards to the Broker for instance selection. The whole stack has to be running (`docker compose up -d` in the CPR). Each collection starts with a **Discovery** folder that checks the instances are registered (`discoveryUrl` = `http://localhost:8500`).
 
-The Discovery collection checks the registry itself and walks a made-up instance through register, refresh, conflict and deregister. Its **Failures** folder reports that instance the way the Gateway does when its circuit breaker removes one (`POST /api/registry/instances/{id}/failures`) and checks that Discovery takes it out of rotation but keeps it registered; with Telegram configured, each run sends one alert about `postman-test`. To see which instance answered each request, follow `docker logs -f cpr-gateway`.
+The Discovery collection checks the registry itself and walks a made-up instance through register, refresh, conflict and deregister. Its **Failures** folder reports that instance the way the Broker does when its circuit breaker removes one (`POST /api/registry/instances/{id}/failures`) and checks that Discovery takes it out of rotation but keeps it registered; with Telegram configured, each run sends one alert about `postman-test`. To see which instance answered each request, follow `docker logs -f cpr-broker`.
 
 ## Exam and World
 
 Exam and World also run as two replicas without a port of their own, so their collections and environments point at the Gateway (`baseUrl` = `http://localhost:8000`). Both replicas share one database, so a run that creates something through one replica and reads it through the other still passes.
 
-Each collection ends with a **Lab 3 – replicas** folder (`discoveryUrl` = `http://localhost:8500`): it checks that Discovery lists at least two healthy replicas with their load, then sends the same request twice and checks that `X-Service-Instance` names a different replica each time (Round-Robin). The folder before it, **Status at baseUrl**, answers with the Gateway's own status when run through the Gateway; a replica's status is what Discovery reports.
+Each collection ends with a **Lab 3 – replicas** folder (`discoveryUrl` = `http://localhost:8500`): it checks that Discovery lists at least two healthy replicas with their load, then sends the same request twice and checks that `X-Service-Instance` identifies the answering replica (load-based routing may choose the same replica again). The folder before it, **Status at baseUrl**, answers with the Gateway's own status when run through the Gateway; a replica's status is what Discovery reports.
 
 ```bash
 npx newman run collections/exam-service/exam-service.postman_collection.json \
@@ -48,3 +48,12 @@ npx newman run collections/exam-service/exam-service.postman_collection.json \
 
 - Name files `<service-name>.postman_collection.json`.
 - Use a `{{baseUrl}}` variable for the host; never commit credentials or tokens.
+
+## Lab 4 shared integration
+
+Import `lab4/lab4-shared.postman_collection.json`. Defaults are Gateway 8000,
+Broker 8600 and Discovery 8500. Set `logToken` locally to the value in your `.env`;
+do not save credentials in Git. Run the disposable topic registration and cleanup
+requests together. Download logs with Postman's **Send and Download** option.
+The Broker now owns balancing/breakers; strict round-robin alternation is no
+longer expected. Zombie/Resource business collections retain the Gateway URL.
