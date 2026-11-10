@@ -1,0 +1,13 @@
+# What Prometheus scrapes. The Message Broker is the one component every
+# request and every event passes through, so its metrics describe the traffic
+# of the whole system, per service.
+global:
+    scrape_interval: 5s
+    evaluation_interval: 5s
+
+scrape_configs:
+    - job_name: broker
+      # The Broker serves its metrics at /metrics/ and redirects /metrics there.
+      metrics_path: /metrics/
+      static_configs:
+          - targets: ["broker:8080"]

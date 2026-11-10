@@ -44,6 +44,47 @@ services:
             - "8500:8080"
 
     # ---------------------------------------------------------------------
+    # Monitoring
+    # ---------------------------------------------------------------------
+    # Prometheus scrapes the Message Broker every 5 seconds; Grafana draws it.
+    # The data source and the dashboard are loaded from ./monitoring at startup.
+    prometheus:
+        image: prom/prometheus:v3.5.0
+        container_name: cpr-prometheus
+        restart: unless-stopped
+        command:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.retention.time=7d
+        volumes:
+            - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+            - prometheus_data:/prometheus
+        ports:
+            - "127.0.0.1:9090:9090"
+
+    grafana:
+        image: grafana/grafana:12.1.0
+        container_name: cpr-grafana
+        restart: unless-stopped
+        environment:
+            GF_SECURITY_ADMIN_USER: admin
+            GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+            # The dashboards can be read without logging in; changing anything
+            # needs the admin account.
+            GF_AUTH_ANONYMOUS_ENABLED: "true"
+            GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+            GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/message-broker.json
+            GF_ANALYTICS_REPORTING_ENABLED: "false"
+            GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+        volumes:
+            - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+            - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+            - grafana_data:/var/lib/grafana
+        ports:
+            - "3000:3000"
+        depends_on:
+            - prometheus
+
+    # ---------------------------------------------------------------------
     # Base Service
     # ---------------------------------------------------------------------
     base-db:
@@ -383,3 +424,5 @@ volumes:
     player-data:
     exam_rqlite_data:
     world_rqlite_data:
+    prometheus_data:
+    grafana_data:

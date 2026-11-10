@@ -41,6 +41,9 @@ Discovery sends its health alerts to (critical load, failed health check,
 recovery). Ask the Discovery owner for them, or leave them empty: the alerts are
 then only written to Discovery's log.
 
+`GRAFANA_ADMIN_PASSWORD` is the password of Grafana's `admin` account. The
+dashboards can be read without it; it is only needed to change them.
+
 The Exam and World databases need nothing here: their rqlite instances are
 bound to `127.0.0.1` and reachable only from inside the Compose network, so
 they run without credentials.
@@ -68,6 +71,8 @@ docker compose down -v  # stop and delete the data as well
 | ------- | --- | ------------------- | ----- |
 | **Gateway** | <http://localhost:8000> | [`gheorghe2973/gateway-service`](https://hub.docker.com/r/gheorghe2973/gateway-service) | Gurschi Gheorghe |
 | Discovery | <http://localhost:8500> | [`ion04/discovery-service`](https://hub.docker.com/r/ion04/discovery-service) | Vornicescu Ion |
+| Grafana | <http://localhost:3000> | [`grafana/grafana`](https://hub.docker.com/r/grafana/grafana) | see [Monitoring](#monitoring) |
+| Prometheus | <http://localhost:9090> | [`prom/prometheus`](https://hub.docker.com/r/prom/prometheus) | see [Monitoring](#monitoring) |
 | Base (2 replicas) | through the Gateway only | [`ion04/base-service`](https://hub.docker.com/r/ion04/base-service) | Vornicescu Ion |
 | Crafting (2 replicas) | through the Gateway only | [`ion04/crafting-service`](https://hub.docker.com/r/ion04/crafting-service) | Vornicescu Ion |
 | Zombie (2 replicas) | through the Gateway only | [`susanito88/zombie-service`](https://hub.docker.com/r/susanito88/zombie-service) | Magla Alexandru |
@@ -98,6 +103,27 @@ response names the replica that produced it in `X-Service-Instance`.
 Each exposes `GET /api/status` as a health check. The database ports are bound
 to `127.0.0.1` only, so they are reachable for debugging but not from the
 network.
+
+### Monitoring
+
+Prometheus scrapes the Message Broker every 5 seconds, and Grafana draws what it
+collects. Every request and every event passes through the Broker, so its
+metrics show the traffic of the whole system, service by service.
+
+Open <http://localhost:3000>: the **Message Broker** dashboard is the home page
+and needs no login. It is loaded from [`monitoring/`](monitoring/) when Grafana
+starts, together with the Prometheus data source, so there is nothing to set up.
+
+| Row | Shows |
+| --- | ----- |
+| Now | Whether the Broker is up, requests per second, the share of failed requests (429 and 5xx), events waiting in the queue, dead letters |
+| Requests through the Broker | Requests per second by service and by status, failed requests by service, and the last hour as a table |
+| Events between services | The durable queue and the dead letter channel over time |
+| The Broker process | Memory, CPU and open file descriptors |
+
+To change the dashboard, edit `monitoring/grafana/dashboards/message-broker.json`
+and restart Grafana; changes made in the browser are not kept. Prometheus itself
+is at <http://localhost:9090>, bound to `127.0.0.1`.
 
 ### Testing it
 

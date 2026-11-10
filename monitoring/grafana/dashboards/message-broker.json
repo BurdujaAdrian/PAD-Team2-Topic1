@@ -1,0 +1,901 @@
+{
+    "uid": "pad-message-broker",
+    "title": "Message Broker",
+    "description": "Traffic and events of PAD Team 2's system, as seen by the Message Broker.",
+    "tags": [
+        "pad-team2",
+        "broker"
+    ],
+    "timezone": "browser",
+    "editable": false,
+    "graphTooltip": 1,
+    "schemaVersion": 41,
+    "version": 1,
+    "refresh": "5s",
+    "time": {
+        "from": "now-15m",
+        "to": "now"
+    },
+    "timepicker": {
+        "refresh_intervals": [
+            "5s",
+            "10s",
+            "30s",
+            "1m",
+            "5m"
+        ]
+    },
+    "templating": {
+        "list": []
+    },
+    "annotations": {
+        "list": []
+    },
+    "links": [],
+    "panels": [
+        {
+            "id": 1,
+            "type": "row",
+            "title": "Now",
+            "collapsed": false,
+            "gridPos": {
+                "x": 0,
+                "y": 0,
+                "w": 24,
+                "h": 1
+            },
+            "panels": []
+        },
+        {
+            "id": 2,
+            "type": "stat",
+            "title": "Broker",
+            "description": "Whether Prometheus can scrape the Message Broker. Down means no request and no event is moving.",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 1,
+                "w": 4,
+                "h": 4
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "expr": "up{job=\"broker\"}",
+                    "legendFormat": ""
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "mappings": [
+                        {
+                            "type": "value",
+                            "options": {
+                                "0": {
+                                    "text": "DOWN",
+                                    "color": "red"
+                                },
+                                "1": {
+                                    "text": "UP",
+                                    "color": "green"
+                                }
+                            }
+                        }
+                    ],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": null
+                            },
+                            {
+                                "color": "green",
+                                "value": 1
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "colorMode": "background",
+                "graphMode": "none",
+                "textMode": "auto"
+            }
+        },
+        {
+            "id": 3,
+            "type": "stat",
+            "title": "Requests per second",
+            "description": "Requests the Broker forwarded to services, all services together, over the last minute.",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "x": 4,
+                "y": 1,
+                "w": 5,
+                "h": 4
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "expr": "sum(rate(broker_requests_total{job=\"broker\"}[1m]))",
+                    "legendFormat": ""
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "reqps",
+                    "decimals": 2,
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "blue",
+                                "value": null
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "colorMode": "background",
+                "graphMode": "area",
+                "textMode": "auto"
+            }
+        },
+        {
+            "id": 4,
+            "type": "stat",
+            "title": "Failed requests",
+            "description": "Share of forwarded requests that ended in 429 or 5xx over the last 5 minutes: the answers that count against a circuit breaker.",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "x": 9,
+                "y": 1,
+                "w": 5,
+                "h": 4
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "expr": "sum(rate(broker_requests_total{job=\"broker\",status=~\"5..|429\"}[5m])) / sum(rate(broker_requests_total{job=\"broker\"}[5m])) or vector(0)",
+                    "legendFormat": ""
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "decimals": 1,
+                    "min": 0,
+                    "max": 1,
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "orange",
+                                "value": 0.01
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.05
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "colorMode": "background",
+                "graphMode": "area",
+                "textMode": "auto"
+            }
+        },
+        {
+            "id": 5,
+            "type": "stat",
+            "title": "Events waiting",
+            "description": "Events in the durable queue that no subscriber has acknowledged yet. A number that keeps growing means a subscriber is not keeping up.",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "x": 14,
+                "y": 1,
+                "w": 5,
+                "h": 4
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "expr": "broker_queue_size{job=\"broker\"}",
+                    "legendFormat": ""
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "orange",
+                                "value": 10
+                            },
+                            {
+                                "color": "red",
+                                "value": 50
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "colorMode": "background",
+                "graphMode": "area",
+                "textMode": "auto"
+            }
+        },
+        {
+            "id": 6,
+            "type": "stat",
+            "title": "Dead letters",
+            "description": "Events given up on after 3 failed deliveries. Each one is listed by GET /dead-letters on the Broker.",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "x": 19,
+                "y": 1,
+                "w": 5,
+                "h": 4
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "expr": "broker_dead_letters{job=\"broker\"}",
+                    "legendFormat": ""
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "red",
+                                "value": 1
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "colorMode": "background",
+                "graphMode": "area",
+                "textMode": "auto"
+            }
+        },
+        {
+            "id": 7,
+            "type": "row",
+            "title": "Requests through the Broker",
+            "collapsed": false,
+            "gridPos": {
+                "x": 0,
+                "y": 5,
+                "w": 24,
+                "h": 1
+            },
+            "panels": []
+        },
+        {
+            "id": 8,
+            "type": "timeseries",
+            "title": "Requests per second, by service",
+            "description": "Which services are being called, and how much. A service that drops to zero while the others carry on has no usable instance.",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 6,
+                "w": 12,
+                "h": 9
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "expr": "sum by (service) (rate(broker_requests_total{job=\"broker\"}[1m]))",
+                    "legendFormat": "{{service}}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "reqps",
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineWidth": 2,
+                        "fillOpacity": 10,
+                        "showPoints": "never",
+                        "spanNulls": true
+                    },
+                    "min": 0
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "calcs": [
+                        "lastNotNull",
+                        "max"
+                    ]
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            }
+        },
+        {
+            "id": 9,
+            "type": "timeseries",
+            "title": "Requests per second, by status",
+            "description": "What the services answered. 502 and 503 are the Broker's own: every instance failed, or none was available. 504 is a timeout.",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 6,
+                "w": 12,
+                "h": 9
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "expr": "sum by (status) (rate(broker_requests_total{job=\"broker\"}[1m]))",
+                    "legendFormat": "{{status}}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "reqps",
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineWidth": 2,
+                        "fillOpacity": 10,
+                        "showPoints": "never",
+                        "spanNulls": true
+                    },
+                    "min": 0
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "calcs": [
+                        "lastNotNull",
+                        "max"
+                    ]
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            }
+        },
+        {
+            "id": 10,
+            "type": "timeseries",
+            "title": "Failed requests per second, by service",
+            "description": "429 and 5xx answers per service. Three of these from one instance inside the breaker window take that instance out of routing.",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 15,
+                "w": 12,
+                "h": 9
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "expr": "sum by (service) (rate(broker_requests_total{job=\"broker\",status=~\"5..|429\"}[1m]))",
+                    "legendFormat": "{{service}}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "reqps",
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineWidth": 2,
+                        "fillOpacity": 10,
+                        "showPoints": "never",
+                        "spanNulls": true
+                    },
+                    "min": 0
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "calcs": [
+                        "lastNotNull",
+                        "max"
+                    ]
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            }
+        },
+        {
+            "id": 11,
+            "type": "table",
+            "title": "Requests in the last hour",
+            "description": "How many requests each service got in the last hour, by status.",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 15,
+                "w": 12,
+                "h": 9
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "expr": "sort_desc(sum by (service, status) (round(increase(broker_requests_total{job=\"broker\"}[1h]))))",
+                    "legendFormat": "",
+                    "instant": true,
+                    "format": "table"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "options": {
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "displayName": "Requests",
+                        "desc": true
+                    }
+                ]
+            },
+            "transformations": [
+                {
+                    "id": "organize",
+                    "options": {
+                        "excludeByName": {
+                            "Time": true
+                        },
+                        "renameByName": {
+                            "service": "Service",
+                            "status": "Status",
+                            "Value": "Requests"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": 12,
+            "type": "row",
+            "title": "Events between services",
+            "collapsed": false,
+            "gridPos": {
+                "x": 0,
+                "y": 24,
+                "w": 24,
+                "h": 1
+            },
+            "panels": []
+        },
+        {
+            "id": 13,
+            "type": "timeseries",
+            "title": "Events waiting for delivery",
+            "description": "The durable queue over time. It should return to zero within seconds of a burst.",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 25,
+                "w": 12,
+                "h": 8
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "expr": "broker_queue_size{job=\"broker\"}",
+                    "legendFormat": "waiting"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineWidth": 2,
+                        "fillOpacity": 10,
+                        "showPoints": "never",
+                        "spanNulls": true
+                    },
+                    "min": 0
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "calcs": [
+                        "lastNotNull",
+                        "max"
+                    ]
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            }
+        },
+        {
+            "id": 14,
+            "type": "timeseries",
+            "title": "Dead letters",
+            "description": "Events moved to the dead letter channel. A step up means a subscriber refused an event three times or could not be reached.",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 25,
+                "w": 12,
+                "h": 8
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "expr": "broker_dead_letters{job=\"broker\"}",
+                    "legendFormat": "dead letters"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineWidth": 2,
+                        "fillOpacity": 10,
+                        "showPoints": "never",
+                        "spanNulls": true
+                    },
+                    "min": 0
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "calcs": [
+                        "lastNotNull",
+                        "max"
+                    ]
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            }
+        },
+        {
+            "id": 15,
+            "type": "row",
+            "title": "The Broker process",
+            "collapsed": false,
+            "gridPos": {
+                "x": 0,
+                "y": 33,
+                "w": 24,
+                "h": 1
+            },
+            "panels": []
+        },
+        {
+            "id": 16,
+            "type": "timeseries",
+            "title": "Memory",
+            "description": "Resident memory of the Broker process.",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 34,
+                "w": 8,
+                "h": 7
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "expr": "process_resident_memory_bytes{job=\"broker\"}",
+                    "legendFormat": "memory"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "bytes",
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineWidth": 2,
+                        "fillOpacity": 10,
+                        "showPoints": "never",
+                        "spanNulls": true
+                    },
+                    "min": 0
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "calcs": [
+                        "lastNotNull",
+                        "max"
+                    ]
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            }
+        },
+        {
+            "id": 17,
+            "type": "timeseries",
+            "title": "CPU",
+            "description": "CPU the Broker uses, as a share of one core.",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "x": 8,
+                "y": 34,
+                "w": 8,
+                "h": 7
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "expr": "rate(process_cpu_seconds_total{job=\"broker\"}[1m])",
+                    "legendFormat": "cpu"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineWidth": 2,
+                        "fillOpacity": 10,
+                        "showPoints": "never",
+                        "spanNulls": true
+                    },
+                    "min": 0
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "calcs": [
+                        "lastNotNull",
+                        "max"
+                    ]
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            }
+        },
+        {
+            "id": 18,
+            "type": "timeseries",
+            "title": "Open file descriptors",
+            "description": "Mostly sockets: connections to services and from the Gateway. A steady climb is a leak.",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "x": 16,
+                "y": 34,
+                "w": 8,
+                "h": 7
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "expr": "process_open_fds{job=\"broker\"}",
+                    "legendFormat": "open"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineWidth": 2,
+                        "fillOpacity": 10,
+                        "showPoints": "never",
+                        "spanNulls": true
+                    },
+                    "min": 0
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "calcs": [
+                        "lastNotNull",
+                        "max"
+                    ]
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            }
+        }
+    ]
+}

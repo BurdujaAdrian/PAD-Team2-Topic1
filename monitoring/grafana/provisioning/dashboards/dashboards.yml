@@ -1,0 +1,11 @@
+# Loads every dashboard in /var/lib/grafana/dashboards at startup.
+apiVersion: 1
+
+providers:
+    - name: PAD Team 2
+      folder: PAD Team 2
+      type: file
+      disableDeletion: true
+      allowUiUpdates: false
+      options:
+          path: /var/lib/grafana/dashboards
