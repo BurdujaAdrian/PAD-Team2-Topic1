@@ -1,0 +1,331 @@
+{
+  "info": {
+    "name": "PAD Lab 4 \u2014 shared Broker integration",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Shared REST/Broker integration checks. Set logToken locally. Does not claim business gRPC consumers are integrated. Registration creates and removes only lab4-postman-demo."
+  },
+  "variable": [
+    {
+      "key": "gatewayUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "brokerUrl",
+      "value": "http://localhost:8600"
+    },
+    {
+      "key": "discoveryUrl",
+      "value": "http://localhost:8500"
+    },
+    {
+      "key": "logToken",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Gateway health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{gatewayUrl}}/api/status"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Gateway uses Broker",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{gatewayUrl}}/api"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"Broker configured\", () => pm.expect(pm.response.json().broker_url).to.include(\"broker\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Broker health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{brokerUrl}}/api/status"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Discovery health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{discoveryUrl}}/api/status"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "zombie instances",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{discoveryUrl}}/api/registry/services/zombie"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "resource instances",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{discoveryUrl}}/api/registry/services/resource"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Zombie types through Gateway",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{gatewayUrl}}/api/zombies/types"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"Replica identified\", () => pm.expect(pm.response.headers.get(\"X-Service-Instance\")).to.be.a(\"string\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Resource nodes through Gateway",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{gatewayUrl}}/api/resource-nodes"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"Replica identified\", () => pm.expect(pm.response.headers.get(\"X-Service-Instance\")).to.be.a(\"string\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Broker routing and exclusions",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{brokerUrl}}/routing"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Broker topics",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{brokerUrl}}/topics"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Broker dead letters",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{brokerUrl}}/dead-letters"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Register disposable topic subscriber",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{discoveryUrl}}/api/registry/instances",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"service\": \"lab4-demo\",\n  \"instance_id\": \"lab4-postman-demo\",\n  \"address\": \"http://broker:8080\",\n  \"topics\": [\n    \"lab4-demo\"\n  ]\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Registered\", () => pm.expect(pm.response.code).to.be.oneOf([200,201]));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Check topic registered",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{brokerUrl}}/topics"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"Topic visible\", () => pm.expect(pm.response.json()).to.include(\"lab4-demo\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Remove disposable subscriber",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": "{{discoveryUrl}}/api/registry/instances/lab4-postman-demo"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Removed\", () => pm.expect(pm.response.code).to.be.oneOf([200,204]));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Download system logs",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Log-Token",
+            "value": "{{logToken}}"
+          }
+        ],
+        "url": "{{brokerUrl}}/logs"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"ZIP archive\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/zip\"));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

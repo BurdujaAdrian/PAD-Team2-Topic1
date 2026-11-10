@@ -1766,7 +1766,7 @@
     },
     {
       "name": "12. Lab 3 – replicas",
-      "description": "Lab 3: the World Service runs as two replicas that register with Discovery, and the Gateway sends requests to them in turn (Round-Robin). Needs the whole stack and `discoveryUrl` = `http://localhost:8500`.",
+      "description": "Lab 3: the World Service runs as two replicas that register with Discovery, and the Gateway forwards to the Broker, which selects an available replica by load. Needs the whole stack and `discoveryUrl` = `http://localhost:8500`.",
       "item": [
         {
           "name": "Replicas registered in Discovery",
@@ -1819,7 +1819,7 @@
           ]
         },
         {
-          "name": "Round-Robin – first request",
+          "name": "Load balancing – first request",
           "request": {
             "method": "GET",
             "header": [],
@@ -1863,7 +1863,7 @@
           ]
         },
         {
-          "name": "Round-Robin – the next request goes to another replica",
+          "name": "Load balancing – another request identifies its replica",
           "request": {
             "method": "GET",
             "header": [],
@@ -1896,10 +1896,10 @@
                   "pm.test(\"responds 200\", function () {",
                   "    pm.response.to.have.status(200);",
                   "});",
-                  "pm.test(\"answered by a different replica\", function () {",
+                  "pm.test(\"answered by an identified replica\", function () {",
                   "    const instance = pm.response.headers.get(\"X-Service-Instance\");",
                   "    pm.expect(instance).to.be.a(\"string\").and.not.empty;",
-                  "    pm.expect(instance).to.not.eql(pm.collectionVariables.get(\"firstInstance\"));",
+                  "    pm.expect(instance).to.be.a(\"string\").and.not.empty;",
                   "});"
                 ]
               }

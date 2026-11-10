@@ -14,6 +14,69 @@ PAD Team 2's Common Public Repository
 
 ![PAD architecture](docs/images/diagram.drawio.png)
 
+## Lab 4 integration: Broker and downloadable logs
+
+The shared Lab 4 integration sends public REST traffic through
+`Gateway -> Message Broker -> service replica`. The Broker reads instances from
+Discovery and owns least-load routing, circuit breakers, failover and game
+session affinity. Base/Crafting's existing `GATEWAY_URL` setting now points at
+the Broker's internal `/api/...` compatibility routes.
+
+The diagram above has intentionally not been changed in this update.
+Service-owned gRPC subscribers, subscriber request queues, internal-route cleanup,
+and the Grafana/ELK monitoring work are separate remaining Lab 4 tasks.
+
+| Shared component | Target image | Local URL |
+| --- | --- | --- |
+| Gateway | `gheorghe2973/gateway-service:4.0.0-dev` | `http://localhost:8000` |
+| Broker | `ion04/message-broker:4.1.0-dev` | `http://localhost:8600` (loopback only) |
+| Discovery with topics | `ion04/discovery-service:4.0.0` | `http://localhost:8500` |
+
+These are target integration tags, not a claim that the new Gateway/Broker images
+have already been published. Until the shared PRs are merged and their publish
+workflows succeed, initialize the three shared submodules and build locally:
+
+```sh
+git submodule update --init services/gateway-service services/message-broker services/discovery-service
+docker compose -f docker-compose.yml -f docker-compose.lab4-build.yml up -d --build
+```
+
+For only the Zombie/Resource demonstration, append
+`gateway discovery broker zombie-api resource-api` to that command. Database
+dependencies start automatically. Zombie and Resource remain on `3.0.1`.
+Once the target images exist, the usual `docker compose up -d` pulls them.
+Merge the component PRs before committing CPR pointers to their final commits.
+
+### Download system logs
+
+Set `LOG_DOWNLOAD_TOKEN` in your ignored `.env` to a long random value. Import
+`collections/lab4/lab4-shared.postman_collection.json`, set the `logToken` variable
+locally, and send **Download system logs**. Save the response as a ZIP file.
+The endpoint is `GET http://localhost:8600/logs` with `X-Log-Token` authentication.
+The token is never included in the collection or Git. An empty server token
+returns 503; a missing/wrong request token returns 401.
+
+All Compose containers forward stdout/stderr through Docker syslog to the Broker.
+The ZIP contains rotating `system.log` files with container identities. Retention
+is approximately 25 MiB; the Broker data volume persists both queues and logs.
+Collection begins when the Broker starts, and UDP delivery is best effort during
+outages. Existing logs are not imported. `docker compose logs` still works via
+Docker's local log cache. No Docker control socket is mounted.
+
+### Verify the integration
+
+Use the Lab 4 collection to check Gateway/Broker/Discovery health, Zombie and
+Resource registrations, business requests through the Gateway, Broker routing
+state, topic registration/cleanup, and the log archive. `X-Service-Instance`
+shows the answering replica. Least-load selection replaces round-robin, so
+strict A/B alternation is no longer expected.
+
+Broker `/topics` can be empty until consumers register subscriptions. A working
+endpoint alone does not demonstrate that business events are integrated.
+Tests and a repeatable isolated verification script are described in
+`scripts/verify_lab4.py`. The isolated test uses disposable databases and never
+changes the normal Compose database volumes.
+
 ## Running the Stack
 
 Everything runs from the Compose file in this repository. It pulls prebuilt
@@ -80,14 +143,13 @@ docker compose down -v  # stop and delete the data as well
 The Compose file pins each image to a version tag, so `docker compose up` always
 brings up the same build rather than whatever `latest` happens to be.
 
-The Gateway is the entry point: clients talk to it, and it talks to the eight
-services. The others are listed with their ports because they stay reachable
+The Gateway is the entry point: clients talk to it, and it forwards business
+requests to the Broker, which selects service replicas. The others are listed with their ports because they stay reachable
 for debugging. Base, Crafting, Zombie, Resource, Exam and World run as two replicas each
 (`deploy.replicas` in the Compose file), and replicas cannot share a host port,
 so they are only reachable through the Gateway. Each replica registers itself with Discovery
-on startup and deregisters on shutdown; the Gateway reads the instances from
-Discovery and sends the requests of each service to them in turn
-(Round-Robin), so replicas can be added or removed with
+on startup and deregisters on shutdown; the Broker reads the instances from
+Discovery and selects an available instance based on load, so replicas can be added or removed with
 `docker compose up -d --scale base-api=3` without any other change.
 `http://localhost:8500/api/registry/services` lists the registered instances.
 
