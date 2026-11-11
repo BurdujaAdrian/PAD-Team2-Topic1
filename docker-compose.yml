@@ -16,7 +16,7 @@ services:
     # ---------------------------------------------------------------------
     gateway:
         logging: *system-logging
-        image: gheorghe2973/gateway-service:4.0.0-dev
+        image: gheorghe2973/gateway-service:4.1.0-dev
         container_name: cpr-gateway
         restart: unless-stopped
         environment:
@@ -47,6 +47,56 @@ services:
             - "127.0.0.1:${SYSLOG_HOST_PORT:-15514}:5514/udp"
         volumes:
             - broker_data:/app/data
+
+    # ---------------------------------------------------------------------
+    # Monitoring
+    # ---------------------------------------------------------------------
+    # Prometheus scrapes the Broker every 5 seconds; Grafana draws it. Their
+    # configuration and the dashboard live in the Broker's repository, so the
+    # message-broker submodule has to be checked out.
+    prometheus:
+        logging: *system-logging
+        image: prom/prometheus:v3.5.0
+        container_name: cpr-prometheus
+        restart: unless-stopped
+        command:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.retention.time=7d
+        volumes:
+            - ./services/message-broker/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+            - prometheus_data:/prometheus
+        depends_on:
+            broker:
+                condition: service_healthy
+        ports:
+            - "127.0.0.1:9090:9090"
+
+    grafana:
+        logging: *system-logging
+        image: grafana/grafana:12.1.0
+        container_name: cpr-grafana
+        restart: unless-stopped
+        environment:
+            GF_SECURITY_ADMIN_USER: admin
+            GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+            # The dashboard can be read without logging in; changing anything
+            # needs the admin account.
+            GF_AUTH_ANONYMOUS_ENABLED: "true"
+            GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+            GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/message-broker.json
+            GF_ANALYTICS_REPORTING_ENABLED: "false"
+            GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+            # Grafana logs every page load at info, which would crowd the other
+            # services out of the Broker's bounded log archive.
+            GF_LOG_LEVEL: warn
+        volumes:
+            - ./services/message-broker/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+            - ./services/message-broker/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+            - grafana_data:/var/lib/grafana
+        depends_on:
+            - prometheus
+        ports:
+            - "3000:3000"
 
     # ---------------------------------------------------------------------
     # Discovery Service
@@ -391,7 +441,7 @@ services:
 
     exam-api:
         logging: *system-logging
-        image: gheorghe2973/exam-service:3.1.0
+        image: gheorghe2973/exam-service:4.0.0
         restart: unless-stopped
         # Two instances sharing exam-db. No container_name and no host port:
         # replicas cannot share either, so Exam is reached through the Gateway.
@@ -401,9 +451,9 @@ services:
             RQLITE_URL: http://exam-db:4001
             # Both replicas seed at boot; rows that already exist are skipped.
             SEED_ON_START: "true"
-            # Through the Gateway like every other service-to-service call, so
-            # the event is balanced across the World replicas.
-            EXAM_PASSED_SUBSCRIBERS: http://gateway:8080/api/events/exam-passed
+            # exam-passed and achievement-unlocked are handed to the Broker over
+            # gRPC; it delivers them to whoever subscribed to the topic.
+            BROKER_GRPC_ADDR: broker:50050
             DISCOVERY_URL: http://discovery:8080
             REGISTER_INTERVAL_SECONDS: "2"
         depends_on:
@@ -441,7 +491,7 @@ services:
 
     world-api:
         logging: *system-logging
-        image: gheorghe2973/world-service:3.1.0
+        image: gheorghe2973/world-service:4.0.0
         restart: unless-stopped
         # Two instances sharing world-db. No container_name and no host port:
         # replicas cannot share either, so World is reached through the Gateway.
@@ -451,7 +501,10 @@ services:
             RQLITE_URL: http://world-db:4001
             # Both replicas seed at boot; rows that already exist are skipped.
             SEED_ON_START: "true"
-            SECTION_UNLOCKED_SUBSCRIBERS: ""
+            # section-unlocked is handed to the Broker over gRPC. exam-passed
+            # arrives from it on the gRPC port 50051, which every replica names
+            # as a topic in its Discovery registration.
+            BROKER_GRPC_ADDR: broker:50050
             DISCOVERY_URL: http://discovery:8080
             REGISTER_INTERVAL_SECONDS: "2"
         depends_on:
@@ -470,3 +523,5 @@ volumes:
     player-data:
     exam_rqlite_data:
     world_rqlite_data:
+    prometheus_data:
+    grafana_data:
