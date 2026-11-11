@@ -127,7 +127,7 @@
                                 "base"
                             ]
                         },
-                        "description": "Lists the base instances registered with Discovery - the ones the Gateway balances requests among (Round-Robin). With the CPR Compose file there are 2. Scale with `docker compose up -d --scale base-api=3` and send this again to see a new instance join."
+                        "description": "Lists the base instances registered with Discovery - the ones the Broker selects by load. With the CPR Compose file there are 2. Scale with `docker compose up -d --scale base-api=3` and send this again to see a new instance join."
                     }
                 },
                 {
@@ -168,7 +168,7 @@
                                 "crafting"
                             ]
                         },
-                        "description": "Lists the crafting instances registered with Discovery - the ones the Gateway balances requests among (Round-Robin). With the CPR Compose file there are 2. Scale with `docker compose up -d --scale crafting-api=3` and send this again to see a new instance join."
+                        "description": "Lists the crafting instances registered with Discovery - the ones the Broker selects by load. With the CPR Compose file there are 2. Scale with `docker compose up -d --scale crafting-api=3` and send this again to see a new instance join."
                     }
                 },
                 {

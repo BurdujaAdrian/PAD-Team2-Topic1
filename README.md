@@ -14,6 +14,107 @@ PAD Team 2's Common Public Repository
 
 ![PAD architecture](docs/images/diagram.drawio.png)
 
+## Lab 4 integration: Broker and downloadable logs
+
+The shared Lab 4 integration sends public REST traffic through
+`Gateway -> Message Broker -> service replica`. The Broker reads instances from
+Discovery and owns least-load routing, circuit breakers, failover and game
+session affinity. Base/Crafting's existing `GATEWAY_URL` setting now points at
+the Broker's internal `/api/...` compatibility routes.
+
+Events between services travel through the Broker over gRPC. Exam publishes
+`exam-passed`, the Broker delivers it to World, and World publishes
+`section-unlocked`; see [Events](#events). The Gateway no longer has routes for
+event delivery. Prometheus and Grafana monitor the Broker; see
+[Monitoring](#monitoring).
+
+Still open: Resource subscribing to `section-unlocked` over gRPC, and subscriber
+request queues.
+
+| Shared component | Target image | Local URL |
+| --- | --- | --- |
+| Gateway | `gheorghe2973/gateway-service:4.1.0-dev` | `http://localhost:8000` |
+| Broker | `ion04/message-broker:4.1.0-dev` | `http://localhost:8600` (loopback only) |
+| Discovery with topics | `ion04/discovery-service:4.0.0` | `http://localhost:8500` |
+| Grafana | `grafana/grafana:12.1.0` | `http://localhost:3000` |
+| Prometheus | `prom/prometheus:v3.5.0` | `http://localhost:9090` (loopback only) |
+
+These are target integration tags, not a claim that the new Gateway/Broker images
+have already been published. Until the shared PRs are merged and their publish
+workflows succeed, initialize the three shared submodules and build locally:
+
+```sh
+git submodule update --init services/gateway-service services/message-broker services/discovery-service
+docker compose -f docker-compose.yml -f docker-compose.lab4-build.yml up -d --build
+```
+
+For only the Zombie/Resource demonstration, append
+`gateway discovery broker zombie-api resource-api` to that command. Database
+dependencies start automatically. Zombie and Resource remain on `3.0.1`.
+Once the target images exist, the usual `docker compose up -d` pulls them.
+Merge the component PRs before committing CPR pointers to their final commits.
+
+### Download system logs
+
+Set `LOG_DOWNLOAD_TOKEN` in your ignored `.env` to a long random value. Import
+`collections/lab4/lab4-shared.postman_collection.json`, set the `logToken` variable
+locally, and send **Download system logs**. Save the response as a ZIP file.
+The endpoint is `GET http://localhost:8600/logs` with `X-Log-Token` authentication.
+The token is never included in the collection or Git. An empty server token
+returns 503; a missing/wrong request token returns 401.
+
+All Compose containers forward stdout/stderr through Docker syslog to the Broker.
+The ZIP contains rotating `system.log` files with container identities. Retention
+is approximately 25 MiB; the Broker data volume persists both queues and logs.
+Collection begins when the Broker starts, and UDP delivery is best effort during
+outages. Existing logs are not imported. `docker compose logs` still works via
+Docker's local log cache. No Docker control socket is mounted.
+
+### Monitoring
+
+Prometheus scrapes the Broker every 5 seconds and Grafana draws what it
+collects. Every request and every event passes through the Broker, so its
+metrics show the traffic of the whole system, service by service.
+
+Open <http://localhost:3000>: the **Message Broker** dashboard is the home page
+and needs no login.
+
+| Row | Shows |
+| --- | ----- |
+| Now | Whether the Broker is up, requests per second, the share of failed requests (429 and 5xx), events waiting in the queue, dead letters |
+| Requests through the Broker | Requests per second by service and by status, failed requests by service, and the last hour as a table |
+| Events between services | The durable queue and the dead letter channel over time |
+| The Broker process | Memory, CPU and open file descriptors |
+
+The Prometheus configuration, the Grafana data source and the dashboard are
+files in the Broker's repository (`services/message-broker/monitoring/`), which
+the Compose file mounts. The submodule therefore has to be checked out, even
+when every image is pulled:
+
+```sh
+git submodule update --init services/message-broker
+```
+
+`GRAFANA_ADMIN_PASSWORD` in `.env` is the password of Grafana's `admin` account.
+It is only needed to change the dashboard.
+
+### Verify the integration
+
+Use the Lab 4 collection to check Gateway/Broker/Discovery health, Zombie and
+Resource registrations, business requests through the Gateway, Broker routing
+state, topic registration/cleanup, and the log archive. `X-Service-Instance`
+shows the answering replica. Least-load selection replaces round-robin, so
+strict A/B alternation is no longer expected.
+
+Broker `/topics` lists `exam-passed` once the World replicas have registered.
+To see an event travel, pass an exam with the Exam collection (**1. Exam flow**)
+and read `GET /api/worlds/utm_campus/map?unlocked=true` through the Gateway: it
+now lists the rooms of the East Wing (`section_east`). `docker compose logs
+world-api` shows `event delivered by broker` with `acknowledged: true`.
+Tests and a repeatable isolated verification script are described in
+`scripts/verify_lab4.py`. The isolated test uses disposable databases and never
+changes the normal Compose database volumes.
+
 ## Running the Stack
 
 Everything runs from the Compose file in this repository. It pulls prebuilt
@@ -68,6 +169,7 @@ docker compose down -v  # stop and delete the data as well
 | ------- | --- | ------------------- | ----- |
 | **Gateway** | <http://localhost:8000> | [`gheorghe2973/gateway-service`](https://hub.docker.com/r/gheorghe2973/gateway-service) | Gurschi Gheorghe |
 | Discovery | <http://localhost:8500> | [`ion04/discovery-service`](https://hub.docker.com/r/ion04/discovery-service) | Vornicescu Ion |
+| Grafana | <http://localhost:3000> | [`grafana/grafana`](https://hub.docker.com/r/grafana/grafana) | see [Monitoring](#monitoring) |
 | Base (2 replicas) | through the Gateway only | [`ion04/base-service`](https://hub.docker.com/r/ion04/base-service) | Vornicescu Ion |
 | Crafting (2 replicas) | through the Gateway only | [`ion04/crafting-service`](https://hub.docker.com/r/ion04/crafting-service) | Vornicescu Ion |
 | Zombie (2 replicas) | through the Gateway only | [`susanito88/zombie-service`](https://hub.docker.com/r/susanito88/zombie-service) | Magla Alexandru |
@@ -80,14 +182,13 @@ docker compose down -v  # stop and delete the data as well
 The Compose file pins each image to a version tag, so `docker compose up` always
 brings up the same build rather than whatever `latest` happens to be.
 
-The Gateway is the entry point: clients talk to it, and it talks to the eight
-services. The others are listed with their ports because they stay reachable
+The Gateway is the entry point: clients talk to it, and it forwards business
+requests to the Broker, which selects service replicas. The others are listed with their ports because they stay reachable
 for debugging. Base, Crafting, Zombie, Resource, Exam and World run as two replicas each
 (`deploy.replicas` in the Compose file), and replicas cannot share a host port,
 so they are only reachable through the Gateway. Each replica registers itself with Discovery
-on startup and deregisters on shutdown; the Gateway reads the instances from
-Discovery and sends the requests of each service to them in turn
-(Round-Robin), so replicas can be added or removed with
+on startup and deregisters on shutdown; the Broker reads the instances from
+Discovery and selects an available instance based on load, so replicas can be added or removed with
 `docker compose up -d --scale base-api=3` without any other change.
 `http://localhost:8500/api/registry/services` lists the registered instances.
 
@@ -1052,6 +1153,209 @@ Success Response (200 OK): the section was already unlocked, `already_unlocked` 
 
 #### Consume `exam_passed`
 
+Not an HTTP endpoint. The Message Broker delivers the `exam-passed` topic to a World replica over gRPC (`Subscriber.Deliver`, port 50051); each replica subscribes by naming the topic in its Discovery registration. The payload is the one documented under [Events](#events).
+
+The event names no world, because which campus a passed exam expands is the World Service's decision rather than the Exam Service's. `DEFAULT_WORLD_ID` picks it.
+
+Applying it is idempotent by `attempt_id`, which is stored as the unlock trigger, so a redelivered event expands nothing a second time.
+
+The answer is `Ack.ok`. `true` settles the event: this delivery generated the section, the trigger had been seen before, or the course expands no section — passing an exam that opens no wing is ordinary. `false` asks the Broker to deliver it again: the payload is unreadable or misses `attempt_id` or `course_id`, or something transient failed. An event refused three times moves to the Broker's dead letter channel.
+
+#### Endpoint Index
+
+`GET /api` Description: Lists every endpoint the service serves, grouped, with a one-line summary each. The index is generated from the same table the routes are registered from, so it cannot drift from what the service does. The root path redirects here.
+
+Success Response (200 OK):
+
+```json
+{
+	"service": "exam",
+	"description": "Owns exam definitions, the question bank, attempts, scores, academic progress and achievements.",
+	"repository": "https://github.com/Gheorghe2973/exam-service",
+	"groups": [
+		{
+			"group": "Exam attempts",
+			"endpoints": [
+				{ "method": "POST", "path": "/api/exams/attempts", "summary": "Start an attempt, idempotent by encounter_id" }
+			]
+		}
+	]
+}
+```
+
+#### Administrative Endpoints
+
+The service also exposes CRUD over the data it owns: courses (`/api/courses`), the question bank (`/api/courses/{course_id}/questions` and `/api/questions/{question_id}`) and the achievement catalogue (`/api/achievements`). No other service calls these — they exist to seed and maintain the exam content — so they are listed at `GET /api` rather than spelled out here.
+
+## World Service
+
+Owns the persistent campus map, room types, resource node placement, zombie spawn
+points and their configuration, section unlock state and procedural generation rules.
+
+Does not own resource quantities or transactions - Resource Service owns them; World
+Service publishes `SectionUnlocked` and Resource Service creates the economy entries
+for the new nodes.
+
+Does not own what players have built - Base Service owns it; Base Service references
+room identifiers, while World Service stores no construction state at all.
+
+Does not own zombie stats or behaviour - Zombie Service owns them; World Service stores
+only zombie type references inside spawn points, which Game Service resolves.
+
+Does not own game sessions, timers or action progress - Game Service owns them; Game
+Service synchronously queries rooms, resource nodes and spawn points when needed.
+
+Does not own the academic rules that trigger unlocking - Exam Service owns them; World
+Service consumes `ExamPassed` and applies its own mapping, idempotent by attempt.
+
+### Endpoints
+
+#### Get the Campus Map
+
+`GET /api/worlds/{world_id}/map` Description: Returns the full topology. Query parameter `unlocked` (boolean, defaults to `true`) filters locked sections.
+
+Success Response (200 OK):
+
+```json
+{
+	"world_id": "world-uuid-100",
+	"version": 7,
+	"rooms": [
+		{
+			"room_id": "room-uuid-201",
+			"name": "FAF Cab",
+			"type": "fafcab",
+			"section_id": "section-uuid-301",
+			"floor": 3,
+			"unlocked": true,
+			"adjacent_room_ids": ["room-uuid-202", "room-uuid-203"]
+		}
+	]
+}
+```
+
+#### List Rooms
+
+`GET /api/worlds/{world_id}/rooms` Description: Returns rooms filtered by `type`, `unlocked` or `section_id`. Used by the Game Service to determine where actions are possible.
+
+Success Response (200 OK):
+
+```json
+{
+	"world_id": "world-uuid-100",
+	"count": 12,
+	"rooms": [
+		{
+			"room_id": "room-uuid-204",
+			"name": "Library",
+			"type": "library",
+			"section_id": "section-uuid-301",
+			"floor": 2,
+			"unlocked": true,
+			"adjacent_room_ids": ["room-uuid-205"]
+		}
+	]
+}
+```
+
+#### Get Resource Nodes in a Room
+
+`GET /api/rooms/{room_id}/resource-nodes` Description: Returns node placement and regeneration configuration. Current quantities belong to the Resource Service.
+
+Success Response (200 OK):
+
+```json
+{
+	"room_id": "room-uuid-204",
+	"nodes": [
+		{
+			"node_id": "node-uuid-401",
+			"resource_type": "paper",
+			"regen_rate_per_minute": 2,
+			"max_capacity": 50
+		}
+	]
+}
+```
+
+Error Responses: `404 Not Found` — unknown or still locked room.
+
+#### Get Spawn Points in a Room
+
+`GET /api/rooms/{room_id}/spawn-points` Description: Returns the spawn configuration for a room. Zombie statistics and behaviour belong to the Zombie Service.
+
+Success Response (200 OK):
+
+```json
+{
+	"room_id": "room-uuid-204",
+	"spawn_points": [
+		{
+			"spawn_point_id": "spawn-uuid-501",
+			"zombie_type_ids": ["zombie-type-uuid-601"],
+			"density": 3,
+			"active_during_cycle": "night"
+		}
+	]
+}
+```
+
+#### List Sections
+
+`GET /api/worlds/{world_id}/sections` Description: Returns all sections of the university and their unlock state.
+
+Success Response (200 OK):
+
+```json
+{
+	"world_id": "world-uuid-100",
+	"sections": [
+		{
+			"section_id": "section-uuid-302",
+			"name": "East Wing",
+			"unlocked": false,
+			"unlocked_by": null,
+			"room_count": 6
+		}
+	]
+}
+```
+
+#### Unlock a Section
+
+`POST /api/worlds/{world_id}/sections/unlock` Description: Administrative path for unlocking a section. The normal flow is the `exam_passed` event. Idempotent by `trigger_id`. Payload:
+
+```json
+{
+	"trigger_id": "attempt-uuid-001",
+	"course_id": "math_analysis"
+}
+```
+
+Success Response (201 Created):
+
+```json
+{
+	"section_id": "section-uuid-302",
+	"name": "East Wing",
+	"already_unlocked": false,
+	"rooms": [
+		{
+			"room_id": "room-uuid-210",
+			"name": "Chemistry Lab",
+			"type": "laboratory",
+			"floor": 4,
+			"unlocked": true,
+			"adjacent_room_ids": ["room-uuid-211"]
+		}
+	]
+}
+```
+
+Success Response (200 OK): the section was already unlocked, `already_unlocked` is `true`.
+
+#### Consume `exam_passed`
+
 `POST /api/events/exam-passed` Description: Delivery endpoint for the Exam Service's `exam_passed` event. It stands in for the broker subscription until one exists, and takes the event payload documented under [Events](#events) unchanged.
 
 The event names no world, because which campus a passed exam expands is the World Service's decision rather than the Exam Service's. `DEFAULT_WORLD_ID` picks it.
@@ -1107,38 +1411,37 @@ Same fields and the same `503` as the Exam Service's status.
 
 ### How they travel today
 
-Until the message broker lands, the events below are delivered over HTTP: the
-publisher POSTs the payload to whoever subscribed to the topic, and the
-subscribers are configured rather than discovered. The payloads and the
-idempotency keys are already the agreed ones, so introducing a broker later
-changes the transport and nothing else.
+Events go through the **Message Broker** over gRPC. A publisher calls
+`Broker.Publish` with a topic and a payload and knows nothing about who
+receives it. A consumer subscribes by naming the topic when it registers with
+Discovery, and the Broker delivers to one of its replicas with
+`Subscriber.Deliver` on the gRPC port 50051.
 
-| Topic | Published by | Consumed by | Delivery endpoint |
-| ----- | ------------ | ----------- | ----------------- |
-| `exam_passed` | Exam Service | World Service | `POST /api/events/exam-passed` |
-| `achievement_unlocked` | Exam Service | Player Service | not wired yet |
-| `section_unlocked` | World Service | Resource Service, Game Service | not wired yet |
+| Event | Topic | Published by | Consumed by |
+| ----- | ----- | ------------ | ----------- |
+| `exam_passed` | `exam-passed` | Exam Service | World Service |
+| `achievement_unlocked` | `achievement-unlocked` | Exam Service | Player Service, not subscribed yet |
+| `section_unlocked` | `section-unlocked` | World Service | Resource Service and Game Service, not subscribed yet |
 
-Subscribers are set per topic through the environment, as a comma-separated
-list of URLs, so a topic can reach several services. In the shared deployment
-they point at the Gateway (`http://gateway:8080/api/events/exam-passed`), like
-every other service-to-service call:
+Topics are hyphenated because Discovery accepts only lowercase letters, digits
+and hyphens in a topic name; the payloads below are unchanged.
+
+Publishers find the Broker through one variable:
 
 | Service | Variable |
 | ------- | -------- |
-| Exam | `EXAM_PASSED_SUBSCRIBERS`, `ACHIEVEMENT_UNLOCKED_SUBSCRIBERS` |
-| World | `SECTION_UNLOCKED_SUBSCRIBERS` |
+| Exam, World | `BROKER_GRPC_ADDR` (`broker:50050` in the shared deployment) |
 
-A topic with no subscribers is logged and dropped, so a service runs on its own
-while the others are being built. Publishing never blocks the response that
-caused it: a submitted exam returns its score immediately and the events go out
-behind it.
+Publishing never blocks the response that caused it: a submitted exam returns
+its score immediately and the events go out behind it. Each event is offered to
+the Broker up to three times. Once the Broker has acknowledged it, its durable
+queue owns the delivery: it retries, and an event refused three times moves to
+the dead letter channel (`GET http://localhost:8600/dead-letters`).
 
-One difference from a real broker is worth stating plainly. Delivery here is
-best-effort: a consumer that is down means the event is lost, where a broker
-would hold it and retry. What is already in place is the part that makes the
-retry safe when it arrives — every event carries a key its consumer deduplicates
-by, so the same event can be delivered twice without a second effect.
+Delivery is at least once, so the same event can arrive twice. Every event
+carries a key its consumer deduplicates by, so a second delivery has no second
+effect. An event published to a topic nobody is subscribed to at that moment is
+acknowledged and dropped by the Broker.
 
 #### `exam_passed`
 
