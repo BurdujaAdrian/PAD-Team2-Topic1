@@ -36,7 +36,7 @@ The pinned Broker includes the merged per-service request queues and the gRPC va
 | Shared component | Target image | Local URL |
 | --- | --- | --- |
 | Gateway | `gheorghe2973/gateway-service:4.1.0-dev` | `http://localhost:8000` |
-| Broker | `${BROKER_IMAGE:-ion04/messege-broker:4.1.1-dev}` | `http://localhost:8600` (loopback only) |
+| Broker | `${BROKER_IMAGE:-adrianburduja/messege-broker:4.1.1-dev}` | `http://localhost:8600` (loopback only) |
 | Discovery with topics | `ion04/discovery-service:4.0.0` | `http://localhost:8500` |
 | Grafana | `grafana/grafana:12.1.0` | `http://localhost:3000` |
 | Prometheus | `prom/prometheus:v3.5.0` | `http://localhost:9090` (loopback only) |
@@ -2137,10 +2137,9 @@ again to check duplicate handling. The default demo node is `lab4-grpc-node`.
 The Resource collection README contains the direct Postman gRPC instructions.
 
 The Broker publishing workflow intentionally uses the spelling `messege-broker`.
-Its username is held in a GitHub secret; the historical README assumes `ion04`.
-`BROKER_IMAGE` overrides that complete reference. If the published image cannot
-be pulled with your Docker credentials, use the source-build override while the
-image owner confirms the namespace/access. Do not substitute passwords into Git.
+It pushes to the Docker Hub account held in its GitHub secret, `adrianburduja`,
+so the image is `adrianburduja/messege-broker`. `BROKER_IMAGE` overrides that
+complete reference. Do not substitute passwords into Git.
 
 Resource's 4.0.0 image must be published after its PR merges into main before
 using the image-only deployment. This update uses the merged Gateway and Discovery Lab 4 commits and the Broker's

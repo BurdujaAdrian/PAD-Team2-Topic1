@@ -32,7 +32,7 @@ services:
     # Message Broker: routing, breakers, durable event queues and system logs.
     broker:
         logging: *system-logging
-        image: ${BROKER_IMAGE:-ion04/messege-broker:4.1.1-dev}
+        image: ${BROKER_IMAGE:-adrianburduja/messege-broker:4.1.1-dev}
         container_name: cpr-broker
         restart: unless-stopped
         environment:
