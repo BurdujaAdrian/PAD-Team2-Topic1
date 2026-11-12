@@ -10,3 +10,6 @@ services:
     discovery:
         build: ./services/discovery-service
         pull_policy: build
+    resource-api:
+        build: ./services/resource-service
+        pull_policy: build

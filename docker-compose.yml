@@ -32,7 +32,7 @@ services:
     # Message Broker: routing, breakers, durable event queues and system logs.
     broker:
         logging: *system-logging
-        image: ion04/message-broker:4.1.0-dev
+        image: ${BROKER_IMAGE:-ion04/messege-broker:4.1.1-dev}
         container_name: cpr-broker
         restart: unless-stopped
         environment:
@@ -288,7 +288,7 @@ services:
 
     resource-api:
         logging: *system-logging
-        image: susanito88/resource-service:3.0.1
+        image: susanito88/resource-service:4.0.0
         restart: unless-stopped
         # Two instances sharing resource-db. No container_name and no host port:
         # replicas cannot share either, so Resource is reached through the Gateway.
