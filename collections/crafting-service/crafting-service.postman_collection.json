@@ -1419,7 +1419,7 @@
                                 "craft"
                             ]
                         },
-                        "description": "Crafts the craftable recipe: Crafting spends the resources in Resource Service and grants the item in Player Service. Saves `craftKey`, the idempotency key.",
+                        "description": "Crafts the craftable recipe: Crafting spends the resources in Resource Service and publishes the item as an `item-crafted` event for Player Service. Saves `craftKey`, the idempotency key.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n    \"player_id\": \"{{playerId}}\",\n    \"recipe_id\": \"{{craftRecipeId}}\",\n    \"idempotency_key\": \"{{craftKey}}\"\n}",
