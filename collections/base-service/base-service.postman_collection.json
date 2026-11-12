@@ -2,7 +2,7 @@
     "info": {
         "_postman_id": "6f0c1f0e-5b1a-4a53-9a55-3c6a8f5b7d21",
         "name": "Base Service",
-        "description": "Test collection for the Base Service (`services/base-service`).\n\nBase runs as several replicas behind the Gateway. Every request goes to the Gateway (`baseUrl`, `http://localhost:8000`), which forwards to the Broker for load-based instance selection. Base calls World, Resource and Player through the Broker using its configured GATEWAY_URL. The whole stack therefore has to be running (`docker compose up -d` in the CPR).\n\nRun the folders top to bottom (or use the Collection Runner). **Discovery** checks the Base instances are registered, **Setup** registers a player and gives it resources, **Bases > Create Base** creates a base whose ids the later requests use, and **Cleanup** deletes everything the run created.\n\nTo see the balancing, follow `docker logs -f cpr-broker` while sending requests: every line names the instance a request went to. The second Kiki request, for example, usually lands on another replica and still sees the cooldown, because the state lives in the shared database.\n\nVariables: `baseUrl` is the Gateway (`http://localhost:8000`); `discoveryUrl` is the Discovery Service (`http://localhost:8500`). Base no longer publishes a port of its own.",
+        "description": "Test collection for the Base Service (`services/base-service`).\n\nBase runs as several replicas behind the Gateway. Every request goes to the Gateway (`baseUrl`, `http://localhost:8000`), which forwards to the Broker for load-based instance selection. Base calls World and Resource through the Broker (`BROKER_URL`) and publishes Kiki rewards to it as `kiki-reward-granted` events over gRPC. The whole stack therefore has to be running (`docker compose up -d` in the CPR).\n\nRun the folders top to bottom (or use the Collection Runner). **Discovery** checks the Base instances are registered, **Setup** registers a player and gives it resources, **Bases > Create Base** creates a base whose ids the later requests use, and **Cleanup** deletes everything the run created.\n\nTo see the balancing, follow `docker logs -f cpr-broker` while sending requests: every line names the instance a request went to. The second Kiki request, for example, usually lands on another replica and still sees the cooldown, because the state lives in the shared database.\n\nVariables: `baseUrl` is the Gateway (`http://localhost:8000`); `discoveryUrl` is the Discovery Service (`http://localhost:8500`). Base no longer publishes a port of its own.",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "item": [
@@ -641,7 +641,7 @@
                                 "reinforce"
                             ]
                         },
-                        "description": "Raises the barricade to level 1. Base asks World Service whether the room is unlocked and has Resource Service deduct the cost, both through the Gateway.",
+                        "description": "Raises the barricade to level 1. Base asks World Service whether the room is unlocked and has Resource Service deduct the cost, both through the Broker.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n    \"request_id\": \"{{requestId}}\",\n    \"target_barricade_level\": 1\n}",
@@ -927,7 +927,7 @@
                                 "interact"
                             ]
                         },
-                        "description": "Triggers a random reward, granted to the base's owner."
+                        "description": "Triggers a random reward, granted to the base's owner: Base publishes it as a `kiki-reward-granted` event for Player Service."
                     }
                 },
                 {

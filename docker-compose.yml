@@ -147,7 +147,7 @@ services:
 
     base-api:
         logging: *system-logging
-        image: ion04/base-service:3.2.0
+        image: ion04/base-service:4.1.0
         restart: unless-stopped
         # Two instances sharing base-db. No container_name and no host port:
         # replicas cannot share either, so Base is reached through the Gateway.
@@ -156,9 +156,13 @@ services:
         environment:
             ASPNETCORE_ENVIRONMENT: Production
             ConnectionStrings__DefaultConnection: Host=base-db;Port=5432;Database=${BASE_POSTGRES_DB};Username=${BASE_POSTGRES_USER};Password=${BASE_POSTGRES_PASSWORD}
-            # Legacy GATEWAY_URL now points to the Broker for internal REST calls.
+            # Every call to World and Resource goes through the Broker.
             # Required: the service refuses to start without it.
-            GATEWAY_URL: http://broker:8080
+            BROKER_URL: http://broker:8080
+            # kiki-reward-granted is handed to the Broker over gRPC. section-unlocked
+            # arrives from it on the gRPC port 50051, which every replica names
+            # as a topic in its Discovery registration. Required as well.
+            BROKER_GRPC_ADDR: broker:50050
             # Each replica registers here on startup so the Broker can find it.
             DISCOVERY_URL: http://discovery:8080
         depends_on:
@@ -194,7 +198,7 @@ services:
 
     crafting-api:
         logging: *system-logging
-        image: ion04/crafting-service:3.2.0
+        image: ion04/crafting-service:4.2.0
         restart: unless-stopped
         # Two instances sharing crafting-db. No container_name and no host port:
         # replicas cannot share either, so Crafting is reached through the Gateway.
@@ -206,9 +210,13 @@ services:
             POSTGRES_PASSWORD: ${CRAFTING_POSTGRES_PASSWORD}
             POSTGRES_HOST: crafting-db
             POSTGRES_PORT: 5432
-            # Every call to Resource, Player and Exam goes through the Gateway.
+            # Every call to Resource, Player and Exam goes through the Broker.
             # Required: the service refuses to start without it.
-            GATEWAY_URL: http://broker:8080
+            BROKER_URL: http://broker:8080
+            # item-crafted is handed to the Broker over gRPC. exam-passed arrives
+            # from it on the gRPC port 50051, which every replica names as a topic
+            # in its Discovery registration. Required as well.
+            BROKER_GRPC_ADDR: broker:50050
             # Each replica registers here on startup so the Broker can find it.
             DISCOVERY_URL: http://discovery:8080
         depends_on:
