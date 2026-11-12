@@ -19,12 +19,14 @@ PAD Team 2's Common Public Repository
 The shared Lab 4 integration sends public REST traffic through
 `Gateway -> Message Broker -> service replica`. The Broker reads instances from
 Discovery and owns least-load routing, circuit breakers, failover and game
-session affinity. Base/Crafting's existing `GATEWAY_URL` setting now points at
-the Broker's internal `/api/...` compatibility routes.
+session affinity. Base and Crafting call other services through the Broker as
+`/send/{service}/...` (`BROKER_URL`).
 
 Events between services travel through the Broker over gRPC. Exam publishes
 `exam-passed`, the Broker delivers it to World, and World publishes
-`section-unlocked`; see [Events](#events). The Gateway no longer has routes for
+`section-unlocked`; Base publishes `kiki-reward-granted` and Crafting
+`item-crafted`, and they subscribe to `section-unlocked` and `exam-passed`; see
+[Events](#events). The Gateway no longer has routes for
 event delivery. Prometheus and Grafana monitor the Broker; see
 [Monitoring](#monitoring).
 
@@ -1203,9 +1205,11 @@ Discovery, and the Broker delivers to one of its replicas with
 
 | Event | Topic | Published by | Consumed by |
 | ----- | ----- | ------------ | ----------- |
-| `exam_passed` | `exam-passed` | Exam Service | World Service |
+| `exam_passed` | `exam-passed` | Exam Service | World Service, Crafting Service |
 | `achievement_unlocked` | `achievement-unlocked` | Exam Service | Player Service, not subscribed yet |
-| `section_unlocked` | `section-unlocked` | World Service | Resource Service (Lab 4); Game subscription remains separate work |
+| `section_unlocked` | `section-unlocked` | World Service | Resource Service (Lab 4), Base Service; Game subscription remains separate work |
+| `kiki_reward_granted` | `kiki-reward-granted` | Base Service | Player Service, not subscribed yet |
+| `item_crafted` | `item-crafted` | Crafting Service | Player Service, not subscribed yet |
 
 Topics are hyphenated because Discovery accepts only lowercase letters, digits
 and hyphens in a topic name; the payloads below are unchanged.
@@ -1214,13 +1218,17 @@ Publishers find the Broker through one variable:
 
 | Service | Variable |
 | ------- | -------- |
-| Exam, World | `BROKER_GRPC_ADDR` (`broker:50050` in the shared deployment) |
+| Exam, World, Base, Crafting | `BROKER_GRPC_ADDR` (`broker:50050` in the shared deployment) |
 
 Publishing never blocks the response that caused it: a submitted exam returns
 its score immediately and the events go out behind it. Each event is offered to
 the Broker up to three times. Once the Broker has acknowledged it, its durable
 queue owns the delivery: it retries, and an event refused three times moves to
 the dead letter channel (`GET http://localhost:8600/dead-letters`).
+
+Base and Crafting publish inside the request instead: they wait for the
+Broker's acknowledgement and answer `503`/`504` when it does not come, and
+repeating the request with the same key publishes the same event again.
 
 Delivery is at least once, so the same event can arrive twice. Every event
 carries a key its consumer deduplicates by, so a second delivery has no second
@@ -1229,7 +1237,7 @@ acknowledged and dropped by the Broker.
 
 #### `exam_passed`
 
-Published by the Exam Service, consumed by the World Service. Applied idempotently by `attempt_id`, so a duplicated delivery generates no second section.
+Published by the Exam Service, consumed by the World Service and by the Crafting Service (which logs it). Applied idempotently by `attempt_id`, so a duplicated delivery generates no second section.
 
 ```json
 {
@@ -1258,7 +1266,7 @@ Published by the Exam Service, consumed by the Player Service, which applies the
 
 #### `section_unlocked`
 
-Published by the World Service, consumed by the Resource Service (which creates the economy entries for the new nodes) and by the Game Service (which invalidates its map cache).
+Published by the World Service, consumed by the Resource Service (which creates the economy entries for the new nodes), by the Base Service (which logs it) and by the Game Service (which invalidates its map cache).
 
 ```json
 {
@@ -1269,6 +1277,35 @@ Published by the World Service, consumed by the Resource Service (which creates 
 	"rooms": [{ "room_id": "room-uuid-210", "type": "laboratory" }],
 	"resource_nodes": [{ "node_id": "node-uuid-410", "room_id": "room-uuid-210", "resource_type": "metal" }],
 	"occurred_at": "2026-09-08T14:37:02Z"
+}
+```
+
+#### `kiki_reward_granted`
+
+Published by the Base Service on every Kiki reward, for the Player Service to add the item; the Player Service is not subscribed yet. Base records the reward only once the Broker acknowledges the event. `event_id` is the reward's id, so a repeated interaction publishes the same pending reward under the same key and Player can deduplicate by it.
+
+```json
+{
+	"event_id": "reward-uuid-601",
+	"player_id": "player-uuid-123",
+	"item_id": "kiki_booster",
+	"quantity": 1,
+	"occurred_at": "2026-11-12T10:14:30.512Z"
+}
+```
+
+#### `item_crafted`
+
+Published by the Crafting Service on every successful craft, for the Player Service to add the item; the Player Service is not subscribed yet. `event_id` is the craft's `idempotency_key`, so a craft repeated with the same key publishes under the same key and Player can deduplicate by it.
+
+```json
+{
+	"event_id": "craft-uuid-801",
+	"player_id": "player-uuid-123",
+	"item_id": "item-uuid-901",
+	"item_type": "barricade_kit",
+	"quantity": 1,
+	"occurred_at": "2026-11-12T10:14:30.512Z"
 }
 ```
 
@@ -1649,7 +1686,7 @@ Error Responses: `404 Not Found` — facility does not exist on this base. `409 
 #### Trigger Kiki Interaction
 
 `POST /api/bases/{base_id}/kiki/interact`
-Description: Triggers a random reward interaction with Kiki, granted to the base's owner via the Player Service.
+Description: Triggers a random reward interaction with Kiki, granted to the base's owner: Base publishes it as a `kiki_reward_granted` event, which the Player Service applies.
 
 Success Response (200 OK):
 
@@ -1737,7 +1774,7 @@ Error Responses: `404 Not Found` — unknown recipe.
 #### Craft an Item
 
 `POST /api/crafting/craft`
-Description: Attempts to craft an item. Validates the unlock condition, deducts resources via the Resource Service, and grants the item via the Player Service — atomically. Idempotent by `idempotency_key`, so retries or reconnects can't double-craft.
+Description: Attempts to craft an item. Validates the unlock condition, deducts resources via the Resource Service, and publishes the item as an `item_crafted` event, which the Player Service applies. Idempotent by `idempotency_key`, so retries or reconnects can't double-craft.
 
 Payload:
 
