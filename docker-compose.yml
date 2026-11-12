@@ -252,7 +252,7 @@ services:
 
     zombie-api:
         logging: *system-logging
-        image: susanito88/zombie-service:3.0.1
+        image: susanito88/zombie-service:4.0.1
         restart: unless-stopped
         # Two instances sharing zombie-db. No container_name and no host port:
         # replicas cannot share either, so Zombie is reached through the Gateway.
