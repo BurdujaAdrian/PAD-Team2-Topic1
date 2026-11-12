@@ -22,30 +22,38 @@ Discovery and owns least-load routing, circuit breakers, failover and game
 session affinity. Base/Crafting's existing `GATEWAY_URL` setting now points at
 the Broker's internal `/api/...` compatibility routes.
 
-The diagram above has intentionally not been changed in this update.
-Service-owned gRPC subscribers, subscriber request queues, internal-route cleanup,
-and the Grafana/ELK monitoring work are separate remaining Lab 4 tasks.
+Events between services travel through the Broker over gRPC. Exam publishes
+`exam-passed`, the Broker delivers it to World, and World publishes
+`section-unlocked`; see [Events](#events). The Gateway no longer has routes for
+event delivery. Prometheus and Grafana monitor the Broker; see
+[Monitoring](#monitoring).
+
+Resource now subscribes to `section-unlocked` over gRPC in its Lab 4 branch.
+The pinned Broker includes the merged per-service request queues and the gRPC validation-error fix.
 
 | Shared component | Target image | Local URL |
 | --- | --- | --- |
-| Gateway | `gheorghe2973/gateway-service:4.0.0-dev` | `http://localhost:8000` |
-| Broker | `ion04/message-broker:4.1.0-dev` | `http://localhost:8600` (loopback only) |
+| Gateway | `gheorghe2973/gateway-service:4.1.0-dev` | `http://localhost:8000` |
+| Broker | `${BROKER_IMAGE:-ion04/messege-broker:4.1.1-dev}` | `http://localhost:8600` (loopback only) |
 | Discovery with topics | `ion04/discovery-service:4.0.0` | `http://localhost:8500` |
+| Grafana | `grafana/grafana:12.1.0` | `http://localhost:3000` |
+| Prometheus | `prom/prometheus:v3.5.0` | `http://localhost:9090` (loopback only) |
 
 These are target integration tags, not a claim that the new Gateway/Broker images
 have already been published. Until the shared PRs are merged and their publish
-workflows succeed, initialize the three shared submodules and build locally:
+workflows succeed, initialize the shared submodules and Resource, then build locally:
 
 ```sh
-git submodule update --init services/gateway-service services/message-broker services/discovery-service
+git submodule update --init services/gateway-service services/message-broker services/discovery-service services/resource-service
 docker compose -f docker-compose.yml -f docker-compose.lab4-build.yml up -d --build
 ```
 
 For only the Zombie/Resource demonstration, append
 `gateway discovery broker zombie-api resource-api` to that command. Database
-dependencies start automatically. Zombie and Resource remain on `3.0.1`.
+dependencies start automatically. Zombie stays on `3.0.1`; Resource targets `4.0.0`.
+The build override also builds Resource until its release workflow publishes the new tag.
 Once the target images exist, the usual `docker compose up -d` pulls them.
-Merge the component PRs before committing CPR pointers to their final commits.
+Merge the component PRs first, then refresh CPR pointers to the final merged commits before merging the CPR PR.
 
 ### Download system logs
 
@@ -63,6 +71,34 @@ Collection begins when the Broker starts, and UDP delivery is best effort during
 outages. Existing logs are not imported. `docker compose logs` still works via
 Docker's local log cache. No Docker control socket is mounted.
 
+### Monitoring
+
+Prometheus scrapes the Broker every 5 seconds and Grafana draws what it
+collects. Every request and every event passes through the Broker, so its
+metrics show the traffic of the whole system, service by service.
+
+Open <http://localhost:3000>: the **Message Broker** dashboard is the home page
+and needs no login.
+
+| Row | Shows |
+| --- | ----- |
+| Now | Whether the Broker is up, requests per second, the share of failed requests (429 and 5xx), events waiting in the queue, dead letters |
+| Requests through the Broker | Requests per second by service and by status, failed requests by service, and the last hour as a table |
+| Events between services | The durable queue and the dead letter channel over time |
+| The Broker process | Memory, CPU and open file descriptors |
+
+The Prometheus configuration, the Grafana data source and the dashboard are
+files in the Broker's repository (`services/message-broker/monitoring/`), which
+the Compose file mounts. The submodule therefore has to be checked out, even
+when every image is pulled:
+
+```sh
+git submodule update --init services/message-broker
+```
+
+`GRAFANA_ADMIN_PASSWORD` in `.env` is the password of Grafana's `admin` account.
+It is only needed to change the dashboard.
+
 ### Verify the integration
 
 Use the Lab 4 collection to check Gateway/Broker/Discovery health, Zombie and
@@ -71,8 +107,11 @@ state, topic registration/cleanup, and the log archive. `X-Service-Instance`
 shows the answering replica. Least-load selection replaces round-robin, so
 strict A/B alternation is no longer expected.
 
-Broker `/topics` can be empty until consumers register subscriptions. A working
-endpoint alone does not demonstrate that business events are integrated.
+Broker `/topics` lists `exam-passed` once the World replicas have registered.
+To see an event travel, pass an exam with the Exam collection (**1. Exam flow**)
+and read `GET /api/worlds/utm_campus/map?unlocked=true` through the Gateway: it
+now lists the rooms of the East Wing (`section_east`). `docker compose logs
+world-api` shows `event delivered by broker` with `acknowledged: true`.
 Tests and a repeatable isolated verification script are described in
 `scripts/verify_lab4.py`. The isolated test uses disposable databases and never
 changes the normal Compose database volumes.
@@ -131,6 +170,7 @@ docker compose down -v  # stop and delete the data as well
 | ------- | --- | ------------------- | ----- |
 | **Gateway** | <http://localhost:8000> | [`gheorghe2973/gateway-service`](https://hub.docker.com/r/gheorghe2973/gateway-service) | Gurschi Gheorghe |
 | Discovery | <http://localhost:8500> | [`ion04/discovery-service`](https://hub.docker.com/r/ion04/discovery-service) | Vornicescu Ion |
+| Grafana | <http://localhost:3000> | [`grafana/grafana`](https://hub.docker.com/r/grafana/grafana) | see [Monitoring](#monitoring) |
 | Base (2 replicas) | through the Gateway only | [`ion04/base-service`](https://hub.docker.com/r/ion04/base-service) | Vornicescu Ion |
 | Crafting (2 replicas) | through the Gateway only | [`ion04/crafting-service`](https://hub.docker.com/r/ion04/crafting-service) | Vornicescu Ion |
 | Zombie (2 replicas) | through the Gateway only | [`susanito88/zombie-service`](https://hub.docker.com/r/susanito88/zombie-service) | Magla Alexandru |
@@ -1114,27 +1154,13 @@ Success Response (200 OK): the section was already unlocked, `already_unlocked` 
 
 #### Consume `exam_passed`
 
-`POST /api/events/exam-passed` Description: Delivery endpoint for the Exam Service's `exam_passed` event. It stands in for the broker subscription until one exists, and takes the event payload documented under [Events](#events) unchanged.
+Not an HTTP endpoint. The Message Broker delivers the `exam-passed` topic to a World replica over gRPC (`Subscriber.Deliver`, port 50051); each replica subscribes by naming the topic in its Discovery registration. The payload is the one documented under [Events](#events).
 
 The event names no world, because which campus a passed exam expands is the World Service's decision rather than the Exam Service's. `DEFAULT_WORLD_ID` picks it.
 
 Applying it is idempotent by `attempt_id`, which is stored as the unlock trigger, so a redelivered event expands nothing a second time.
 
-Success Response (202 Accepted): this delivery generated the section.
-
-```json
-{
-	"event_id": "event-uuid-701",
-	"attempt_id": "attempt-uuid-001",
-	"world_id": "world-uuid-100",
-	"outcome": "unlocked",
-	"section_id": "section-uuid-302"
-}
-```
-
-Success Response (200 OK): `outcome` is `already_applied` when the trigger had been seen before, or `ignored` when the course expands no section. Both acknowledge the event — passing an exam that opens no wing is ordinary, and rejecting it would make a publisher redeliver something that can never succeed.
-
-Error Responses: `400 Bad Request` — the payload is missing `attempt_id` or `course_id`, so it can never apply. `5xx` — something transient failed and redelivering is worth it.
+The answer is `Ack.ok`. `true` settles the event: this delivery generated the section, the trigger had been seen before, or the course expands no section — passing an exam that opens no wing is ordinary. `false` asks the Broker to deliver it again: the payload is unreadable or misses `attempt_id` or `course_id`, or something transient failed. An event refused three times moves to the Broker's dead letter channel.
 
 #### Endpoint Index
 
@@ -1169,38 +1195,37 @@ Same fields and the same `503` as the Exam Service's status.
 
 ### How they travel today
 
-Until the message broker lands, the events below are delivered over HTTP: the
-publisher POSTs the payload to whoever subscribed to the topic, and the
-subscribers are configured rather than discovered. The payloads and the
-idempotency keys are already the agreed ones, so introducing a broker later
-changes the transport and nothing else.
+Events go through the **Message Broker** over gRPC. A publisher calls
+`Broker.Publish` with a topic and a payload and knows nothing about who
+receives it. A consumer subscribes by naming the topic when it registers with
+Discovery, and the Broker delivers to one of its replicas with
+`Subscriber.Deliver` on the gRPC port 50051.
 
-| Topic | Published by | Consumed by | Delivery endpoint |
-| ----- | ------------ | ----------- | ----------------- |
-| `exam_passed` | Exam Service | World Service | `POST /api/events/exam-passed` |
-| `achievement_unlocked` | Exam Service | Player Service | not wired yet |
-| `section_unlocked` | World Service | Resource Service, Game Service | not wired yet |
+| Event | Topic | Published by | Consumed by |
+| ----- | ----- | ------------ | ----------- |
+| `exam_passed` | `exam-passed` | Exam Service | World Service |
+| `achievement_unlocked` | `achievement-unlocked` | Exam Service | Player Service, not subscribed yet |
+| `section_unlocked` | `section-unlocked` | World Service | Resource Service (Lab 4); Game subscription remains separate work |
 
-Subscribers are set per topic through the environment, as a comma-separated
-list of URLs, so a topic can reach several services. In the shared deployment
-they point at the Gateway (`http://gateway:8080/api/events/exam-passed`), like
-every other service-to-service call:
+Topics are hyphenated because Discovery accepts only lowercase letters, digits
+and hyphens in a topic name; the payloads below are unchanged.
+
+Publishers find the Broker through one variable:
 
 | Service | Variable |
 | ------- | -------- |
-| Exam | `EXAM_PASSED_SUBSCRIBERS`, `ACHIEVEMENT_UNLOCKED_SUBSCRIBERS` |
-| World | `SECTION_UNLOCKED_SUBSCRIBERS` |
+| Exam, World | `BROKER_GRPC_ADDR` (`broker:50050` in the shared deployment) |
 
-A topic with no subscribers is logged and dropped, so a service runs on its own
-while the others are being built. Publishing never blocks the response that
-caused it: a submitted exam returns its score immediately and the events go out
-behind it.
+Publishing never blocks the response that caused it: a submitted exam returns
+its score immediately and the events go out behind it. Each event is offered to
+the Broker up to three times. Once the Broker has acknowledged it, its durable
+queue owns the delivery: it retries, and an event refused three times moves to
+the dead letter channel (`GET http://localhost:8600/dead-letters`).
 
-One difference from a real broker is worth stating plainly. Delivery here is
-best-effort: a consumer that is down means the event is lost, where a broker
-would hold it and retry. What is already in place is the part that makes the
-retry safe when it arrives — every event carries a key its consumer deduplicates
-by, so the same event can be delivered twice without a second effect.
+Delivery is at least once, so the same event can arrive twice. Every event
+carries a key its consumer deduplicates by, so a second delivery has no second
+effect. An event published to a topic nobody is subscribed to at that moment is
+acknowledged and dropped by the Broker.
 
 #### `exam_passed`
 
@@ -1504,7 +1529,7 @@ Error Responses: `409 Conflict` - transaction already applied. `422 Unprocessabl
 
 #### Receive a Section Unlocked Event
 
-`POST /api/events/section-unlocked` accepts the `section_unlocked` payload documented in [Events](#events). It validates the node-to-room references and creates the resource nodes in one database transaction. Success returns `200 OK`:
+The internal HTTP compatibility endpoint `POST /api/events/section-unlocked` (not exposed by Gateway) accepts the `section_unlocked` payload documented in [Events](#events). It validates the node-to-room references and creates the resource nodes in one database transaction. Success returns `200 OK`:
 
 ```json
 {
@@ -1532,7 +1557,7 @@ Success Response (200 OK):
 
 The shared Compose file runs `susanito88/resource-service:3.0.0` as two replicas behind the Gateway (`http://localhost:8000`), sharing one PostgreSQL database and persistent volume. It sets `Database__ApplyMigrationsOnStartup: "true"`, so EF Core applies migrations before the API starts; no manual table creation is needed on a fresh database.
 
-Import the [Resource Postman collection](collections/resource-service/resource-service.postman_collection.json) and run its requests in collection order. Its `baseUrl` defaults to the Gateway, `http://localhost:8000`; the collection generates identifiers for the run. It covers node CRUD, gathering, consumption, duplicate operations, validation, and simulated section-unlocked events. These calls simulate requests from peer services; they do not demonstrate full live integration with Game, Crafting, Base, or World. Player IDs are accepted without checking Player Service.
+Import the [Resource Postman collection](collections/resource-service/resource-service.postman_collection.json) and run its requests in collection order. Its `baseUrl` defaults to the Gateway, `http://localhost:8000`; the collection generates identifiers for the run. It covers node CRUD, gathering, consumption, duplicate operations and validation. Section-unlocked delivery now has a separate Broker gRPC demo in [the collection guide](collections/resource-service/README.md). The HTTP gathering/consumption calls still simulate peer requests; they do not demonstrate full integration with Game, Crafting or Base. Player IDs are accepted without checking Player Service.
 
 ## Base Service
 
@@ -1983,7 +2008,7 @@ PostgreSQL:
 
 \+ Events survive a consumer being down. Satisfies not losing an `exam_passed` because World Service happened to be restarting.
 
-\- At-least-once delivery means events can arrive twice. Every consumer must deduplicate, which is why `exam_passed` carries `attempt_id` and `section_unlocked` carries `trigger_id`.
+\- At-least-once delivery means events can arrive twice. Every consumer must deduplicate, which is why `exam_passed` carries `attempt_id` and Resource deduplicates `section_unlocked` by `event_id`.
 
 \- Eventual consistency. There is a window in which the exam is passed but the new wing does not exist yet.
 
@@ -2065,3 +2090,22 @@ Every PR must include:
 - Semantic Versioning (`MAJOR.MINOR.PATCH`)
 - Version bumped and tagged on `main` at release time
 - `dev` stays on the next `-dev` pre-release version between releases
+
+## Resource Lab 4 demo and deployment notes
+
+Use `python3 scripts/demo_resource_event.py` to publish a `section-unlocked`
+event through the Broker's real gRPC interface. The script checks Resource's
+subscription, waits until its node is readable through Gateway, and publishes
+again to check duplicate handling. The default demo node is `lab4-grpc-node`.
+The Resource collection README contains the direct Postman gRPC instructions.
+
+The Broker publishing workflow intentionally uses the spelling `messege-broker`.
+Its username is held in a GitHub secret; the historical README assumes `ion04`.
+`BROKER_IMAGE` overrides that complete reference. If the published image cannot
+be pulled with your Docker credentials, use the source-build override while the
+image owner confirms the namespace/access. Do not substitute passwords into Git.
+
+Resource's 4.0.0 image must be published after its PR merges into main before
+using the image-only deployment. This update uses the merged Gateway and Discovery Lab 4 commits and the Broker's
+merged monitoring files plus the validation-error circuit-breaker fix. The Broker
+4.1.1-dev target must be published after that fix merges.

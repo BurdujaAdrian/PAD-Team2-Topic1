@@ -57,3 +57,10 @@ do not save credentials in Git. Run the disposable topic registration and cleanu
 requests together. Download logs with Postman's **Send and Download** option.
 The Broker now owns balancing/breakers; strict round-robin alternation is no
 longer expected. Zombie/Resource business collections retain the Gateway URL.
+
+### Resource gRPC events
+
+The Resource HTTP collection no longer posts World events through Gateway. See
+[Resource's gRPC demo guide](resource-service/README.md) and its protobuf message
+example for publishing `section-unlocked` to Broker port 50050 and checking the
+result through Gateway. The terminal alternative is `python3 scripts/demo_resource_event.py`.
