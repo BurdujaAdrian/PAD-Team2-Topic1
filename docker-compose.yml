@@ -335,7 +335,7 @@ services:
 
     game-service-1:
         logging: *system-logging
-        image: adrianburduja/game-service:3.2.5
+        image: adrianburduja/game-service:4.0.1
         restart: unless-stopped
         depends_on:
             broker:
@@ -398,8 +398,7 @@ services:
 
     player-service:
         logging: *system-logging
-        # 0.0.2 is not published on Docker Hub; 0.0.1 is the latest version tag.
-        image: adrianburduja/player-service:3.2.4
+        image: adrianburduja/player-service:4.0.1
         restart: unless-stopped
         depends_on:
             broker:
