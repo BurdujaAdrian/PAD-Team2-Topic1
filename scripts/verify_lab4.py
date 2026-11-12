@@ -197,6 +197,127 @@ def main():
                 "PASS: authenticated system log ZIP includes all tested services",
                 flush=True,
             )
+            # The Broker's generated Python client exercises the C# service's
+            # actual gRPC wire contract, not an HTTP mock.
+            broker_id = run(*command, "ps", "-q", "broker").strip()
+            registrations = json.loads(
+                http(discovery, "/api/registry/services/resource")[2]
+            )["instances"]
+            assert all("section-unlocked" in i.get("topics", []) for i in registrations)
+            event = {
+                "event_id": "live-resource-event",
+                "world_id": "world",
+                "section_id": "section",
+                "trigger_id": "trigger",
+                "rooms": [{"room_id": "room", "type": "laboratory"}],
+                "resource_nodes": [
+                    {
+                        "node_id": "live-event-node",
+                        "room_id": "room",
+                        "resource_type": "metal",
+                    }
+                ],
+                "occurred_at": "2026-11-12T12:00:00Z",
+            }
+            publish = "import sys,grpc,broker_pb2 as p,broker_pb2_grpc as r; c=grpc.insecure_channel('localhost:50050'); a=r.BrokerStub(c).Publish(p.Event(topic='section-unlocked',payload=sys.stdin.buffer.read()),timeout=5); assert a.ok"
+
+            def publish_event(payload):
+                run(
+                    "exec",
+                    "-i",
+                    broker_id,
+                    "python",
+                    "-c",
+                    publish,
+                    input=json.dumps(payload),
+                )
+
+            publish_event(event)
+            eventually(
+                lambda: http(gateway, "/api/resource-nodes/live-event-node")[0] == 200
+            )
+            node = json.loads(http(gateway, "/api/resource-nodes/live-event-node")[2])
+            assert node["quantity"] == 0 and node["max_capacity"] == 50
+            node["quantity"] = 17
+            assert (
+                http(gateway, "/api/resource-nodes/live-event-node", "PUT", node)[0]
+                == 200
+            )
+            # A duplicate must preserve subsequent changes to the node, not reset it.
+            publish_event(event)
+            time.sleep(2)
+            assert (
+                json.loads(http(gateway, "/api/resource-nodes/live-event-node")[2])[
+                    "quantity"
+                ]
+                == 17
+            )
+            addresses = [
+                i["address"].split("://")[1].split(":")[0] + ":50051"
+                for i in registrations
+            ]
+            race = dict(
+                event,
+                event_id="live-race",
+                resource_nodes=[
+                    dict(event["resource_nodes"][0], node_id="live-race-node")
+                ],
+            )
+            concurrent = "import sys,json,grpc,broker_pb2 as p,broker_pb2_grpc as r; from concurrent.futures import ThreadPoolExecutor; d=json.load(sys.stdin); e=p.Event(topic='section-unlocked',payload=json.dumps(d['event']).encode()); call=lambda host:r.SubscriberStub(grpc.insecure_channel(host)).Deliver(e,timeout=10).ok; pool=ThreadPoolExecutor(8); assert all(pool.map(call,d['addresses']*4))"
+            run(
+                "exec",
+                "-i",
+                broker_id,
+                "python",
+                "-c",
+                concurrent,
+                input=json.dumps({"event": race, "addresses": addresses}),
+            )
+            nodes = json.loads(http(gateway, "/api/resource-nodes")[2])[
+                "resource_nodes"
+            ]
+            assert sum(n["node_id"] == "live-race-node" for n in nodes) == 1
+            resource_ids = run(*command, "ps", "-q", "resource-api").split()
+            run("restart", *resource_ids)
+            eventually(
+                lambda: http(gateway, "/api/resource-nodes/live-event-node")[0] == 200
+            )
+            publish_event(event)
+            time.sleep(2)
+            assert (
+                json.loads(http(gateway, "/api/resource-nodes/live-event-node")[2])[
+                    "quantity"
+                ]
+                == 17
+            )
+            invalid = dict(
+                event,
+                event_id="live-invalid",
+                resource_nodes=[
+                    dict(
+                        event["resource_nodes"][0],
+                        node_id="invalid-node",
+                        room_id="missing",
+                    )
+                ],
+            )
+            publish_event(invalid)
+            eventually(
+                lambda: any(
+                    "live-invalid" in item["payload"]
+                    for item in json.loads(http(broker, "/dead-letters")[2])
+                ),
+                seconds=30,
+            )
+            assert http(gateway, "/api/resource-nodes/invalid-node")[0] == 404
+            assert not any(
+                "live-resource-event" in item["payload"]
+                for item in json.loads(http(broker, "/dead-letters")[2])
+            )
+            print(
+                "PASS: real gRPC delivery, concurrent duplicate safety across replicas, restart deduplication and invalid-event dead letters",
+                flush=True,
+            )
             zombie_ids = run(*command, "ps", "-q", "zombie-api").split()
             paused = zombie_ids[0]
             instance_id = run(

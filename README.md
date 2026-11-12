@@ -28,31 +28,32 @@ Events between services travel through the Broker over gRPC. Exam publishes
 event delivery. Prometheus and Grafana monitor the Broker; see
 [Monitoring](#monitoring).
 
-Still open: Resource subscribing to `section-unlocked` over gRPC, and subscriber
-request queues.
+Resource now subscribes to `section-unlocked` over gRPC in its Lab 4 branch.
+The pinned Broker includes the merged per-service request queues and the gRPC validation-error fix.
 
 | Shared component | Target image | Local URL |
 | --- | --- | --- |
 | Gateway | `gheorghe2973/gateway-service:4.1.0-dev` | `http://localhost:8000` |
-| Broker | `ion04/message-broker:4.1.0-dev` | `http://localhost:8600` (loopback only) |
+| Broker | `${BROKER_IMAGE:-ion04/messege-broker:4.1.1-dev}` | `http://localhost:8600` (loopback only) |
 | Discovery with topics | `ion04/discovery-service:4.0.0` | `http://localhost:8500` |
 | Grafana | `grafana/grafana:12.1.0` | `http://localhost:3000` |
 | Prometheus | `prom/prometheus:v3.5.0` | `http://localhost:9090` (loopback only) |
 
 These are target integration tags, not a claim that the new Gateway/Broker images
 have already been published. Until the shared PRs are merged and their publish
-workflows succeed, initialize the three shared submodules and build locally:
+workflows succeed, initialize the shared submodules and Resource, then build locally:
 
 ```sh
-git submodule update --init services/gateway-service services/message-broker services/discovery-service
+git submodule update --init services/gateway-service services/message-broker services/discovery-service services/resource-service
 docker compose -f docker-compose.yml -f docker-compose.lab4-build.yml up -d --build
 ```
 
 For only the Zombie/Resource demonstration, append
 `gateway discovery broker zombie-api resource-api` to that command. Database
-dependencies start automatically. Zombie and Resource remain on `3.0.1`.
+dependencies start automatically. Zombie stays on `3.0.1`; Resource targets `4.0.0`.
+The build override also builds Resource until its release workflow publishes the new tag.
 Once the target images exist, the usual `docker compose up -d` pulls them.
-Merge the component PRs before committing CPR pointers to their final commits.
+Merge the component PRs first, then refresh CPR pointers to the final merged commits before merging the CPR PR.
 
 ### Download system logs
 
@@ -1421,7 +1422,7 @@ Discovery, and the Broker delivers to one of its replicas with
 | ----- | ----- | ------------ | ----------- |
 | `exam_passed` | `exam-passed` | Exam Service | World Service |
 | `achievement_unlocked` | `achievement-unlocked` | Exam Service | Player Service, not subscribed yet |
-| `section_unlocked` | `section-unlocked` | World Service | Resource Service and Game Service, not subscribed yet |
+| `section_unlocked` | `section-unlocked` | World Service | Resource Service (Lab 4); Game subscription remains separate work |
 
 Topics are hyphenated because Discovery accepts only lowercase letters, digits
 and hyphens in a topic name; the payloads below are unchanged.
@@ -1745,7 +1746,7 @@ Error Responses: `409 Conflict` - transaction already applied. `422 Unprocessabl
 
 #### Receive a Section Unlocked Event
 
-`POST /api/events/section-unlocked` accepts the `section_unlocked` payload documented in [Events](#events). It validates the node-to-room references and creates the resource nodes in one database transaction. Success returns `200 OK`:
+The internal HTTP compatibility endpoint `POST /api/events/section-unlocked` (not exposed by Gateway) accepts the `section_unlocked` payload documented in [Events](#events). It validates the node-to-room references and creates the resource nodes in one database transaction. Success returns `200 OK`:
 
 ```json
 {
@@ -1773,7 +1774,7 @@ Success Response (200 OK):
 
 The shared Compose file runs `susanito88/resource-service:3.0.0` as two replicas behind the Gateway (`http://localhost:8000`), sharing one PostgreSQL database and persistent volume. It sets `Database__ApplyMigrationsOnStartup: "true"`, so EF Core applies migrations before the API starts; no manual table creation is needed on a fresh database.
 
-Import the [Resource Postman collection](collections/resource-service/resource-service.postman_collection.json) and run its requests in collection order. Its `baseUrl` defaults to the Gateway, `http://localhost:8000`; the collection generates identifiers for the run. It covers node CRUD, gathering, consumption, duplicate operations, validation, and simulated section-unlocked events. These calls simulate requests from peer services; they do not demonstrate full live integration with Game, Crafting, Base, or World. Player IDs are accepted without checking Player Service.
+Import the [Resource Postman collection](collections/resource-service/resource-service.postman_collection.json) and run its requests in collection order. Its `baseUrl` defaults to the Gateway, `http://localhost:8000`; the collection generates identifiers for the run. It covers node CRUD, gathering, consumption, duplicate operations and validation. Section-unlocked delivery now has a separate Broker gRPC demo in [the collection guide](collections/resource-service/README.md). The HTTP gathering/consumption calls still simulate peer requests; they do not demonstrate full integration with Game, Crafting or Base. Player IDs are accepted without checking Player Service.
 
 ## Base Service
 
@@ -2224,7 +2225,7 @@ PostgreSQL:
 
 \+ Events survive a consumer being down. Satisfies not losing an `exam_passed` because World Service happened to be restarting.
 
-\- At-least-once delivery means events can arrive twice. Every consumer must deduplicate, which is why `exam_passed` carries `attempt_id` and `section_unlocked` carries `trigger_id`.
+\- At-least-once delivery means events can arrive twice. Every consumer must deduplicate, which is why `exam_passed` carries `attempt_id` and Resource deduplicates `section_unlocked` by `event_id`.
 
 \- Eventual consistency. There is a window in which the exam is passed but the new wing does not exist yet.
 
@@ -2306,3 +2307,22 @@ Every PR must include:
 - Semantic Versioning (`MAJOR.MINOR.PATCH`)
 - Version bumped and tagged on `main` at release time
 - `dev` stays on the next `-dev` pre-release version between releases
+
+## Resource Lab 4 demo and deployment notes
+
+Use `python3 scripts/demo_resource_event.py` to publish a `section-unlocked`
+event through the Broker's real gRPC interface. The script checks Resource's
+subscription, waits until its node is readable through Gateway, and publishes
+again to check duplicate handling. The default demo node is `lab4-grpc-node`.
+The Resource collection README contains the direct Postman gRPC instructions.
+
+The Broker publishing workflow intentionally uses the spelling `messege-broker`.
+Its username is held in a GitHub secret; the historical README assumes `ion04`.
+`BROKER_IMAGE` overrides that complete reference. If the published image cannot
+be pulled with your Docker credentials, use the source-build override while the
+image owner confirms the namespace/access. Do not substitute passwords into Git.
+
+Resource's 4.0.0 image must be published after its PR merges into main before
+using the image-only deployment. This update uses the merged Gateway and Discovery Lab 4 commits and the Broker's
+merged monitoring files plus the validation-error circuit-breaker fix. The Broker
+4.1.1-dev target must be published after that fix merges.

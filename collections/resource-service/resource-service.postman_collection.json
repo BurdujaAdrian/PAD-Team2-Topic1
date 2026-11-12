@@ -1,8 +1,8 @@
 {
   "info": {
-    "name": "PAD Lab 1 - Resource Service",
+    "name": "PAD Lab 4 - Resource Service",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Resource CRUD, atomicity, idempotency and event checks for Resource Service."
+    "description": "Resource CRUD, atomicity and idempotency through Gateway. World events now use Broker gRPC; see README.md and section-unlocked.grpc.json for that separate demo."
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:8000" },
@@ -66,21 +66,6 @@
       "name": "17 Retry corrected failed operation",
       "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/resource-transactions/consume", "body": { "mode": "raw", "raw": "{\n  \"transaction_id\": \"failed-{{run_id}}\",\n  \"player_id\": \"player-{{run_id}}\",\n  \"reason\": \"crafting\",\n  \"items\": [{ \"resource_type\": \"metal\", \"quantity\": 1 }]\n}", "options": { "raw": { "language": "json" } } } },
       "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"] } }]
-    },
-    {
-      "name": "18 World mock: section_unlocked",
-      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/events/section-unlocked", "body": { "mode": "raw", "raw": "{\n  \"event_id\": \"event-{{run_id}}\",\n  \"world_id\": \"world-mock\",\n  \"section_id\": \"section-mock\",\n  \"trigger_id\": \"trigger-mock\",\n  \"rooms\": [{ \"room_id\": \"room-mock\", \"type\": \"laboratory\" }],\n  \"resource_nodes\": [{ \"node_id\": \"event-node-{{run_id}}\", \"room_id\": \"room-mock\", \"resource_type\": \"wood\" }],\n  \"occurred_at\": \"2026-09-08T14:37:02Z\"\n}", "options": { "raw": { "language": "json" } } } },
-      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"] } }]
-    },
-    {
-      "name": "19 Duplicate World event",
-      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/events/section-unlocked", "body": { "mode": "raw", "raw": "{\n  \"event_id\": \"event-{{run_id}}\",\n  \"world_id\": \"world-mock\",\n  \"section_id\": \"section-mock\",\n  \"trigger_id\": \"trigger-mock\",\n  \"rooms\": [{ \"room_id\": \"room-mock\", \"type\": \"laboratory\" }],\n  \"resource_nodes\": [{ \"node_id\": \"event-node-{{run_id}}\", \"room_id\": \"room-mock\", \"resource_type\": \"wood\" }],\n  \"occurred_at\": \"2026-09-08T14:37:02Z\"\n}", "options": { "raw": { "language": "json" } } } },
-      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));"] } }]
-    },
-    {
-      "name": "20 Verify empty World node",
-      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/resource-nodes/event-node-{{run_id}}" },
-      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));", "pm.test(\"placeholder economy\", () => { pm.expect(pm.response.json().quantity).to.eql(0); pm.expect(pm.response.json().max_capacity).to.eql(50); });"] } }]
     },
     {
       "name": "21 Replace node stock",
