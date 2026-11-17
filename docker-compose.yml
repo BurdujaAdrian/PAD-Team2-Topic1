@@ -333,7 +333,7 @@ services:
         volumes:
             - game-data:/rqlite/file
         ports:
-            - "127.0.0.1:4004:4001"   # HTTP API — only needed on the host for local debugging
+            - "127.0.0.1:4004:4001" # HTTP API — only needed on the host for local debugging
         healthcheck:
             test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
             interval: 3s
@@ -396,7 +396,7 @@ services:
         volumes:
             - player-data:/rqlite/file
         ports:
-            - "127.0.0.1:4002:4001"   # HTTP API — only needed on the host for local debugging
+            - "127.0.0.1:4002:4001" # HTTP API — only needed on the host for local debugging
         healthcheck:
             test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
             interval: 3s
@@ -414,7 +414,7 @@ services:
             player-db:
                 condition: service_healthy
         deploy:
-          replicas: 2
+            replicas: 2
         environment:
             - DISCOVERY_URL=http://discovery:8080
             - DB_DSN=http://player-db:4001
@@ -520,6 +520,81 @@ services:
             world-db:
                 condition: service_healthy
 
+    # ---------------------------------------------------------------------
+    # Data Warehouse and ETL
+    # ---------------------------------------------------------------------
+    # Only etl-service writes here; no game service reads or writes it.
+    warehouse-db:
+        logging: *system-logging
+        depends_on:
+            broker:
+                condition: service_healthy
+        image: postgres:17
+        container_name: cpr-warehouse-postgres
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: ${WAREHOUSE_POSTGRES_DB}
+            POSTGRES_USER: ${WAREHOUSE_POSTGRES_USER}
+            POSTGRES_PASSWORD: ${WAREHOUSE_POSTGRES_PASSWORD}
+        ports:
+            - "127.0.0.1:5436:5432"
+        volumes:
+            - warehouse_pgdata:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${WAREHOUSE_POSTGRES_USER} -d ${WAREHOUSE_POSTGRES_DB}"]
+            interval: 5s
+            timeout: 5s
+            retries: 10
+
+    # Copies the data of every service database into warehouse-db every
+    # ETL_INTERVAL_SECONDS. Built from this repository, not pulled from Docker Hub.
+    # One instance only: a second one would load the same rows at the same time.
+    etl-service:
+        logging: *system-logging
+        build: ./services/etl-service
+        container_name: cpr-etl-service
+        restart: unless-stopped
+        environment:
+            ETL_INTERVAL_SECONDS: ${ETL_INTERVAL_SECONDS:-60}
+            WAREHOUSE_POSTGRES_HOST: warehouse-db
+            WAREHOUSE_POSTGRES_PORT: 5432
+            WAREHOUSE_POSTGRES_DB: ${WAREHOUSE_POSTGRES_DB}
+            WAREHOUSE_POSTGRES_USER: ${WAREHOUSE_POSTGRES_USER}
+            WAREHOUSE_POSTGRES_PASSWORD: ${WAREHOUSE_POSTGRES_PASSWORD}
+            # Sources on Postgres.
+            BASE_POSTGRES_HOST: base-db
+            BASE_POSTGRES_PORT: 5432
+            BASE_POSTGRES_DB: ${BASE_POSTGRES_DB}
+            BASE_POSTGRES_USER: ${BASE_POSTGRES_USER}
+            BASE_POSTGRES_PASSWORD: ${BASE_POSTGRES_PASSWORD}
+            CRAFTING_POSTGRES_HOST: crafting-db
+            CRAFTING_POSTGRES_PORT: 5432
+            CRAFTING_POSTGRES_DB: ${CRAFTING_POSTGRES_DB}
+            CRAFTING_POSTGRES_USER: ${CRAFTING_POSTGRES_USER}
+            CRAFTING_POSTGRES_PASSWORD: ${CRAFTING_POSTGRES_PASSWORD}
+            ZOMBIE_POSTGRES_HOST: zombie-db
+            ZOMBIE_POSTGRES_PORT: 5432
+            ZOMBIE_POSTGRES_DB: ${ZOMBIE_POSTGRES_DB}
+            ZOMBIE_POSTGRES_USER: ${ZOMBIE_POSTGRES_USER}
+            ZOMBIE_POSTGRES_PASSWORD: ${ZOMBIE_POSTGRES_PASSWORD}
+            RESOURCE_POSTGRES_HOST: resource-db
+            RESOURCE_POSTGRES_PORT: 5432
+            RESOURCE_POSTGRES_DB: ${RESOURCE_POSTGRES_DB}
+            RESOURCE_POSTGRES_USER: ${RESOURCE_POSTGRES_USER}
+            RESOURCE_POSTGRES_PASSWORD: ${RESOURCE_POSTGRES_PASSWORD}
+            # Sources on rqlite, read through its HTTP API.
+            GAME_RQLITE_URL: http://game-db:4001
+            PLAYER_RQLITE_URL: http://player-db:4001
+            EXAM_RQLITE_URL: http://exam-db:4001
+            WORLD_RQLITE_URL: http://world-db:4001
+        # Only the warehouse is required. A source database that is down fails
+        # its own part of the run; the other sources still load.
+        depends_on:
+            warehouse-db:
+                condition: service_healthy
+        ports:
+            - "127.0.0.1:8700:8080"
+
 volumes:
     broker_data:
     base_pgdata:
@@ -532,3 +607,4 @@ volumes:
     world_rqlite_data:
     prometheus_data:
     grafana_data:
+    warehouse_pgdata:

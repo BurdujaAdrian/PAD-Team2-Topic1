@@ -2,10 +2,9 @@
 
 PAD Team 2's Common Public Repository
 
-
 | Name             | Services                         | Language | Database   |
 | ---------------- | -------------------------------- | -------- | ---------- |
-| Burduja Adrian   | Player Service, Game Service     | Go       | RQLite     |
+| Burduja Adrian   | Player Service, Game Service     | Go       | rqlite     |
 | Gurschi Gheorghe | Exam Service, World Service      | Go       | rqlite     |
 | Vornicescu Ion   | Base Service, Crafting Service   | C#       | PostgreSQL |
 | Magla Alexandru  | Zombie Service, Resource Service | C#       | PostgreSQL |
@@ -14,9 +13,9 @@ PAD Team 2's Common Public Repository
 
 ![PAD architecture](docs/images/diagram.drawio.png)
 
-## Lab 4 integration: Broker and downloadable logs
+## Gateway, Message Broker and System Logs
 
-The shared Lab 4 integration sends public REST traffic through
+Public REST traffic goes through
 `Gateway -> Message Broker -> service replica`. The Broker reads instances from
 Discovery and owns least-load routing, circuit breakers, failover and game
 session affinity. Base and Crafting call other services through the Broker as
@@ -26,24 +25,25 @@ Events between services travel through the Broker over gRPC. Exam publishes
 `exam-passed`, the Broker delivers it to World, and World publishes
 `section-unlocked`; Base publishes `kiki-reward-granted` and Crafting
 `item-crafted`, and they subscribe to `section-unlocked` and `exam-passed`; see
-[Events](#events). The Gateway no longer has routes for
-event delivery. Prometheus and Grafana monitor the Broker; see
-[Monitoring](#monitoring).
+[Events](#events). Resource subscribes to `section-unlocked` as well. The
+Gateway only forwards REST requests and takes no part in event delivery.
+Prometheus and Grafana monitor the Broker; see [Monitoring](#monitoring).
 
-Resource now subscribes to `section-unlocked` over gRPC in its Lab 4 branch.
-The pinned Broker includes the merged per-service request queues and the gRPC validation-error fix.
+The Broker keeps a separate request queue for every service, so a slow service
+does not hold up requests to the others.
 
-| Shared component | Target image | Local URL |
-| --- | --- | --- |
-| Gateway | `gheorghe2973/gateway-service:4.1.0-dev` | `http://localhost:8000` |
-| Broker | `${BROKER_IMAGE:-adrianburduja/messege-broker:4.1.1-dev}` | `http://localhost:8600` (loopback only) |
-| Discovery with topics | `ion04/discovery-service:4.0.0` | `http://localhost:8500` |
-| Grafana | `grafana/grafana:12.1.0` | `http://localhost:3000` |
-| Prometheus | `prom/prometheus:v3.5.0` | `http://localhost:9090` (loopback only) |
+| Component  | Image                                                     | Local URL                               |
+| ---------- | --------------------------------------------------------- | --------------------------------------- |
+| Gateway    | `gheorghe2973/gateway-service:4.1.0-dev`                  | `http://localhost:8000`                 |
+| Broker     | `${BROKER_IMAGE:-adrianburduja/messege-broker:4.1.1-dev}` | `http://localhost:8600` (loopback only) |
+| Discovery  | `ion04/discovery-service:4.0.0`                           | `http://localhost:8500`                 |
+| Grafana    | `grafana/grafana:12.1.0`                                  | `http://localhost:3000`                 |
+| Prometheus | `prom/prometheus:v3.5.0`                                  | `http://localhost:9090` (loopback only) |
 
-These are target integration tags, not a claim that the new Gateway/Broker images
-have already been published. Until the shared PRs are merged and their publish
-workflows succeed, initialize the shared submodules and Resource, then build locally:
+These are the tags the Compose file pins, and every one of them is published on
+Docker Hub, so `docker compose up -d` pulls them. To build the Gateway, the
+Broker, Discovery and Resource from their submodules instead, initialize them
+and add the build override:
 
 ```sh
 git submodule update --init services/gateway-service services/message-broker services/discovery-service services/resource-service
@@ -52,10 +52,7 @@ docker compose -f docker-compose.yml -f docker-compose.lab4-build.yml up -d --bu
 
 For only the Zombie/Resource demonstration, append
 `gateway discovery broker zombie-api resource-api` to that command. Database
-dependencies start automatically. Zombie stays on `3.0.1`; Resource targets `4.0.0`.
-The build override also builds Resource until its release workflow publishes the new tag.
-Once the target images exist, the usual `docker compose up -d` pulls them.
-Merge the component PRs first, then refresh CPR pointers to the final merged commits before merging the CPR PR.
+dependencies start automatically.
 
 ### Download system logs
 
@@ -82,12 +79,12 @@ metrics show the traffic of the whole system, service by service.
 Open <http://localhost:3000>: the **Message Broker** dashboard is the home page
 and needs no login.
 
-| Row | Shows |
-| --- | ----- |
-| Now | Whether the Broker is up, requests per second, the share of failed requests (429 and 5xx), events waiting in the queue, dead letters |
-| Requests through the Broker | Requests per second by service and by status, failed requests by service, and the last hour as a table |
-| Events between services | The durable queue and the dead letter channel over time |
-| The Broker process | Memory, CPU and open file descriptors |
+| Row                         | Shows                                                                                                                                |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Now                         | Whether the Broker is up, requests per second, the share of failed requests (429 and 5xx), events waiting in the queue, dead letters |
+| Requests through the Broker | Requests per second by service and by status, failed requests by service, and the last hour as a table                               |
+| Events between services     | The durable queue and the dead letter channel over time                                                                              |
+| The Broker process          | Memory, CPU and open file descriptors                                                                                                |
 
 The Prometheus configuration, the Grafana data source and the dashboard are
 files in the Broker's repository (`services/message-broker/monitoring/`), which
@@ -103,16 +100,17 @@ It is only needed to change the dashboard.
 
 ### Verify the integration
 
-Use the Lab 4 collection to check Gateway/Broker/Discovery health, Zombie and
-Resource registrations, business requests through the Gateway, Broker routing
-state, topic registration/cleanup, and the log archive. `X-Service-Instance`
-shows the answering replica. Least-load selection replaces round-robin, so
-strict A/B alternation is no longer expected.
+Use the shared collection (`collections/lab4/lab4-shared.postman_collection.json`)
+to check Gateway/Broker/Discovery health, Zombie and Resource registrations,
+business requests through the Gateway, Broker routing state, topic
+registration/cleanup, and the log archive. `X-Service-Instance` shows the
+answering replica. The Broker picks the least-loaded replica, so consecutive
+requests do not strictly alternate between replicas.
 
 Broker `/topics` lists `exam-passed` once the World replicas have registered.
 To see an event travel, pass an exam with the Exam collection (**1. Exam flow**)
 and read `GET /api/worlds/utm_campus/map?unlocked=true` through the Gateway: it
-now lists the rooms of the East Wing (`section_east`). `docker compose logs
+lists the rooms of the East Wing (`section_east`). `docker compose logs
 world-api` shows `event delivered by broker` with `acknowledged: true`.
 Tests and a repeatable isolated verification script are described in
 `scripts/verify_lab4.py`. The isolated test uses disposable databases and never
@@ -121,8 +119,10 @@ changes the normal Compose database volumes.
 ## Running the Stack
 
 Everything runs from the Compose file in this repository. It pulls prebuilt
-images from Docker Hub rather than building from the submodules, so no service
-source is needed to bring the system up.
+images from Docker Hub rather than building from the submodules, so no submodule
+needs to be checked out to bring the system up. The one exception is the ETL
+Service: its source lives in this repository (`services/etl-service/`, not a
+submodule), and Compose builds it on the first `docker compose up`.
 
 ### Requirements
 
@@ -145,9 +145,9 @@ Discovery sends its health alerts to (critical load, failed health check,
 recovery). Ask the Discovery owner for them, or leave them empty: the alerts are
 then only written to Discovery's log.
 
-The Exam and World databases need nothing here: their rqlite instances are
-bound to `127.0.0.1` and reachable only from inside the Compose network, so
-they run without credentials.
+The Game, Player, Exam and World databases need nothing here: rqlite runs
+without credentials, and their ports are bound to `127.0.0.1`, so they are
+reachable from this machine for debugging but not from the network.
 
 ### Starting it
 
@@ -168,38 +168,41 @@ docker compose down -v  # stop and delete the data as well
 
 ### Where the services listen
 
-| Service | URL | Image on Docker Hub | Owner |
-| ------- | --- | ------------------- | ----- |
-| **Gateway** | <http://localhost:8000> | [`gheorghe2973/gateway-service`](https://hub.docker.com/r/gheorghe2973/gateway-service) | Gurschi Gheorghe |
-| Discovery | <http://localhost:8500> | [`ion04/discovery-service`](https://hub.docker.com/r/ion04/discovery-service) | Vornicescu Ion |
-| Grafana | <http://localhost:3000> | [`grafana/grafana`](https://hub.docker.com/r/grafana/grafana) | see [Monitoring](#monitoring) |
-| Base (2 replicas) | through the Gateway only | [`ion04/base-service`](https://hub.docker.com/r/ion04/base-service) | Vornicescu Ion |
-| Crafting (2 replicas) | through the Gateway only | [`ion04/crafting-service`](https://hub.docker.com/r/ion04/crafting-service) | Vornicescu Ion |
-| Zombie (2 replicas) | through the Gateway only | [`susanito88/zombie-service`](https://hub.docker.com/r/susanito88/zombie-service) | Magla Alexandru |
-| Resource (2 replicas) | through the Gateway only | [`susanito88/resource-service`](https://hub.docker.com/r/susanito88/resource-service) | Magla Alexandru |
-| Exam (2 replicas) | through the Gateway only | [`gheorghe2973/exam-service`](https://hub.docker.com/r/gheorghe2973/exam-service) | Gurschi Gheorghe |
-| World (2 replicas) | through the Gateway only | [`gheorghe2973/world-service`](https://hub.docker.com/r/gheorghe2973/world-service) | Gurschi Gheorghe |
-| Player | <http://localhost:8085> | [`adrianburduja/player-service`](https://hub.docker.com/r/adrianburduja/player-service) | Burduja Adrian |
-| Game | <http://localhost:8086> | [`adrianburduja/game-service`](https://hub.docker.com/r/adrianburduja/game-service) | Burduja Adrian |
+| Service                   | URL                                     | Image on Docker Hub                                                                     | Owner                           |
+| ------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------- |
+| **Gateway**               | <http://localhost:8000>                 | [`gheorghe2973/gateway-service`](https://hub.docker.com/r/gheorghe2973/gateway-service) | Gurschi Gheorghe                |
+| Discovery                 | <http://localhost:8500>                 | [`ion04/discovery-service`](https://hub.docker.com/r/ion04/discovery-service)           | Vornicescu Ion                  |
+| Grafana                   | <http://localhost:3000>                 | [`grafana/grafana`](https://hub.docker.com/r/grafana/grafana)                           | see [Monitoring](#monitoring)   |
+| Base         | through the Gateway only                | [`ion04/base-service`](https://hub.docker.com/r/ion04/base-service)                     | Vornicescu Ion                  |
+| Crafting     | through the Gateway only                | [`ion04/crafting-service`](https://hub.docker.com/r/ion04/crafting-service)             | Vornicescu Ion                  |
+| Zombie       | through the Gateway only                | [`susanito88/zombie-service`](https://hub.docker.com/r/susanito88/zombie-service)       | Magla Alexandru                 |
+| Resource     | through the Gateway only                | [`susanito88/resource-service`](https://hub.docker.com/r/susanito88/resource-service)   | Magla Alexandru                 |
+| Exam         | through the Gateway only                | [`gheorghe2973/exam-service`](https://hub.docker.com/r/gheorghe2973/exam-service)       | Gurschi Gheorghe                |
+| World        | through the Gateway only                | [`gheorghe2973/world-service`](https://hub.docker.com/r/gheorghe2973/world-service)     | Gurschi Gheorghe                |
+| Player       | through the Gateway only                | [`adrianburduja/player-service`](https://hub.docker.com/r/adrianburduja/player-service) | Burduja Adrian                  |
+| Game                      | <http://localhost:8086>                 | [`adrianburduja/game-service`](https://hub.docker.com/r/adrianburduja/game-service)     | Burduja Adrian                  |
+| ETL                       | <http://localhost:8700> (loopback only) | built from [`services/etl-service`](services/etl-service/)                              | Vornicescu Ion                  |
+| Data Warehouse | `127.0.0.1:5436`                        | [`postgres`](https://hub.docker.com/_/postgres)                                         | see [ETL Service](#etl-service) |
 
 The Compose file pins each image to a version tag, so `docker compose up` always
 brings up the same build rather than whatever `latest` happens to be.
 
 The Gateway is the entry point: clients talk to it, and it forwards business
-requests to the Broker, which selects service replicas. The others are listed with their ports because they stay reachable
-for debugging. Base, Crafting, Zombie, Resource, Exam and World run as two replicas each
+requests to the Broker, which selects service replicas. Discovery, Grafana, Game
+and the ETL keep a host port as well: Game for its WebSocket connections, the
+others for debugging. Base, Crafting, Zombie, Resource, Exam, World and Player
+run as two replicas each
 (`deploy.replicas` in the Compose file), and replicas cannot share a host port,
 so they are only reachable through the Gateway. Each replica registers itself with Discovery
 on startup and deregisters on shutdown; the Broker reads the instances from
 Discovery and selects an available instance based on load, so replicas can be added or removed with
 `docker compose up -d --scale base-api=3` without any other change.
-`http://localhost:8500/api/registry/services` lists the registered instances.
+<http://localhost:8500/api/registry/services> lists the registered instances.
+Every Exam, World, Zombie and Resource response names the replica that produced
+it in `X-Service-Instance`.
 
-Exam, World, Zombie and Resource replicas join the Discovery Service on startup; the registry is
-at <http://localhost:8500/api/registry/services>. Every Exam, World, Zombie and Resource
-response names the replica that produced it in `X-Service-Instance`.
-
-Each exposes `GET /api/status` as a health check. The database ports are bound
+Each exposes `GET /api/status` as a health check; the ETL Service exposes
+`GET /health` instead. The database ports are bound
 to `127.0.0.1` only, so they are reachable for debugging but not from the
 network.
 
@@ -217,20 +220,20 @@ npx newman run collections/exam-service/exam-service.postman_collection.json \
 
 ## Player Service
 
-Owns the player's identity, friends and online presence, inventory, player progression(XP), trading between players(Including ensuring correctness and making trades across lobbies).
+Owns the player's identity, friends and online presence, inventory, player progression (XP), trading between players (including ensuring correctness and making trades across lobbies).
 
-Does not own the item recipes or their acquisition - Crafting service does; Player service only receives the items from the Crafting service after they are crafted.
+Does not own the item recipes or their acquisition - Crafting Service does; Player Service only receives the items from the Crafting Service after they are crafted.
 
-Does not own the real-time actions state - Game Service does; Game service tells which stats to update with the corresponding values.
+Does not own the real-time actions state - Game Service does; Game Service tells which stats to update with the corresponding values.
 
 ### Endpoints
- 
+
 #### Register Player
- 
+
 `POST /api/players` Description: Creates a new player account.
- 
+
 Request Body:
- 
+
 ```json
 {
 	"username": "alex_faf",
@@ -238,69 +241,69 @@ Request Body:
 	"password": "hunter2"
 }
 ```
- 
+
 Success Response (201 Created):
- 
+
 ```json
 {
 	"player_id": "player-uuid-100",
 	"username": "alex_faf"
 }
 ```
- 
+
 #### Login
- 
+
 `POST /api/players/login` Description: Authenticates a player
- 
+
 Request Body:
- 
+
 ```json
 {
 	"username": "alex_faf",
 	"password": "hunter2"
 }
 ```
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"player_id": "player-uuid-100"
 }
 ```
- 
+
 #### Get Player Profile
- 
+
 `GET /api/players/{player_id}` Description: Returns identity, progression and presence for a player.
 
 Success Response (200 OK):
- 
+
 ```json
 {
 	"player_id": "player-uuid-100",
 	"username": "alex_faf",
 	"xp": 1200,
 	"level": 5,
-	"avatar":"img.png",
+	"avatar": "img.png",
 	"online_status": "online"
 }
 ```
- 
+
 #### Update Player Profile
- 
+
 `PATCH /api/players/{player_id}` Description: Updates mutable profile fields.
- 
+
 Request Body:
- 
+
 ```json
 {
 	"username": "alex_new",
 	"avatar": "avatar-uuid-12"
 }
 ```
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"player_id": "player-uuid-100",
@@ -309,7 +312,8 @@ Success Response (200 OK):
 }
 ```
 
-#### Delete Player Progile
+#### Delete Player Profile
+
 `DELETE /api/players/{player_id}` Description: Delete the profile of a player
 
 Success Response (204 No Content)
@@ -330,11 +334,11 @@ Success Response (200 OK):
 ```
 
 #### List Friends
- 
+
 `GET /api/players/{player_id}/friends` Description: Returns the player's friend list with current presence.
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"player_id": "player-uuid-100",
@@ -350,7 +354,7 @@ Success Response (200 OK):
 
 #### List Incoming Friend Requests
 
-`GET /api/players/{player_id}/friends/requests` Description: Returns pending friend requests sent *to* this player by others. Does not include requests this player has sent out.
+`GET /api/players/{player_id}/friends/requests` Description: Returns pending friend requests sent _to_ this player by others. Does not include requests this player has sent out.
 
 Success Response (200 OK):
 
@@ -369,71 +373,72 @@ Success Response (200 OK):
 ```
 
 #### Send Friend Request
- 
+
 `POST /api/players/{player_id}/friends/requests` Description: Sends a friend request to another player.
 
 Request body:
+
 ```json
 {
-	"target_player_id":"friend-uuid-100"
+	"target_player_id": "friend-uuid-100"
 }
 ```
- 
+
 Success Response (201 Created):
- 
+
 ```json
 {
 	"request_id": "friend-req-uuid-500",
 	"status": "pending"
 }
 ```
- 
+
 #### Accept Friend Request
- 
+
 `POST /api/players/{player_id}/friends/requests/{request_id}/accept` Description: Accepts a pending friend request.
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"request_id": "friend-req-uuid-500",
 	"status": "accepted"
 }
 ```
- 
+
 #### Remove Friend
- 
+
 `DELETE /api/players/{player_id}/friends/{friend_id}` Description: Removes an existing friend relationship.
- 
+
 Success Response (204 No Content)
- 
+
 #### Update Presence
- 
+
 `PATCH /api/players/{player_id}/presence` Description: Updates the player's online status. Called internally on connect/disconnect/session start.
- 
+
 Request Body:
- 
+
 ```json
 {
 	"status": "in-session"
 }
 ```
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"player_id": "player-uuid-100",
 	"online_status": "in-session"
 }
 ```
- 
+
 #### Get Inventory
- 
+
 `GET /api/players/{player_id}/inventory` Description: Returns the player's owned consumables and cosmetic items.
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"player_id": "player-uuid-100",
@@ -448,7 +453,7 @@ Success Response (200 OK):
 	]
 }
 ```
- 
+
 #### Grant Item to Inventory
 
 `POST /api/players/{player_id}/inventory/items` Description: Grants an item to the player's inventory. Called by the Crafting Service once an item finishes crafting. The `event_id` is a unique identifier for the granting event; sending the same event multiple times doesn't result in compounding quantity.
@@ -472,13 +477,13 @@ Success Response (200 OK):
 	"quantity": 3
 }
 ```
- 
-#### Submit an event that affects players progression
- 
-`POST /api/players/{player_id}/progression-events` Description: Submits an event that alters players progression. The even_id is an unique identifier for said event, sending the same event multiple times doesn't result in compunding change.
- 
+
+#### Submit an event that affects player progression
+
+`POST /api/players/{player_id}/progression-events` Description: Submits an event that alters a player's progression. The `event_id` is a unique identifier for said event; sending the same event multiple times doesn't result in compounding change.
+
 Request Body:
- 
+
 ```json
 {
 	"xp_delta": 150,
@@ -486,9 +491,9 @@ Request Body:
 	"event_id": "action-uuid-300"
 }
 ```
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"player_id": "player-uuid-100",
@@ -497,13 +502,13 @@ Success Response (200 OK):
 	"leveled_up": false
 }
 ```
- 
+
 #### Propose Trade
- 
+
 `POST /api/trades` Description: Creates a trade offer between two players, including across lobbies.
- 
+
 Request Body:
- 
+
 ```json
 {
 	"from_player_id": "player-uuid-100",
@@ -512,48 +517,48 @@ Request Body:
 	"requested_item_ids": ["item-uuid-702"]
 }
 ```
- 
+
 Success Response (201 Created):
- 
+
 ```json
 {
 	"trade_id": "trade-uuid-900",
 	"status": "pending"
 }
 ```
- 
+
 #### Accept Trade
- 
+
 `POST /api/trades/{trade_id}/accept` Description: Verifies ownership of all offered/requested items and performs the transfer atomically. Returns `409 Conflict` if either party no longer owns the listed items.
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"trade_id": "trade-uuid-900",
 	"status": "completed"
 }
 ```
- 
+
 #### Decline Trade
- 
+
 `POST /api/trades/{trade_id}/decline` Description: Cancels a pending trade offer.
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"trade_id": "trade-uuid-900",
 	"status": "declined"
 }
 ```
- 
+
 #### Get Trade
- 
+
 `GET /api/trades/{trade_id}` Description: Returns the current state of a trade.
- 
+
 Success Response (200 OK):
- 
+
 ```json
 {
 	"trade_id": "trade-uuid-900",
@@ -769,14 +774,13 @@ Owns exam definitions, the static question bank, exam attempts, scores, pass/fai
 results, per-course progress, grades, achievements and diploma milestones.
 
 Does not own player identity, XP or levels - Player Service owns them; Exam Service
-publishes `ExamCompleted` and `AchievementUnlocked`, and Player Service applies the
-reward itself.
+publishes `achievement_unlocked`, and Player Service applies the reward itself.
 
 Does not own the player's inventory - Player Service owns it; rewards travel as event
 payloads and are never written directly by Exam Service.
 
 Does not own the campus map or wing unlocking - World Service owns it; Exam Service
-publishes `ExamPassed` and World Service decides which section to generate.
+publishes `exam_passed` and World Service decides which section to generate.
 
 Does not own encounters, the day/night cycle or action timers - Game Service owns them;
 Game Service synchronously requests an exam when a player meets a Professor Zombie.
@@ -975,9 +979,7 @@ Success Response (200 OK):
 	"groups": [
 		{
 			"group": "Exam attempts",
-			"endpoints": [
-				{ "method": "POST", "path": "/api/exams/attempts", "summary": "Start an attempt, idempotent by encounter_id" }
-			]
+			"endpoints": [{ "method": "POST", "path": "/api/exams/attempts", "summary": "Start an attempt, idempotent by encounter_id" }]
 		}
 	]
 }
@@ -993,7 +995,7 @@ Owns the persistent campus map, room types, resource node placement, zombie spaw
 points and their configuration, section unlock state and procedural generation rules.
 
 Does not own resource quantities or transactions - Resource Service owns them; World
-Service publishes `SectionUnlocked` and Resource Service creates the economy entries
+Service publishes `section_unlocked` and Resource Service creates the economy entries
 for the new nodes.
 
 Does not own what players have built - Base Service owns it; Base Service references
@@ -1006,7 +1008,7 @@ Does not own game sessions, timers or action progress - Game Service owns them; 
 Service synchronously queries rooms, resource nodes and spawn points when needed.
 
 Does not own the academic rules that trigger unlocking - Exam Service owns them; World
-Service consumes `ExamPassed` and applies its own mapping, idempotent by attempt.
+Service consumes `exam_passed` and applies its own mapping, idempotent by attempt.
 
 ### Endpoints
 
@@ -1203,21 +1205,21 @@ receives it. A consumer subscribes by naming the topic when it registers with
 Discovery, and the Broker delivers to one of its replicas with
 `Subscriber.Deliver` on the gRPC port 50051.
 
-| Event | Topic | Published by | Consumed by |
-| ----- | ----- | ------------ | ----------- |
-| `exam_passed` | `exam-passed` | Exam Service | World Service, Crafting Service |
-| `achievement_unlocked` | `achievement-unlocked` | Exam Service | Player Service, not subscribed yet |
-| `section_unlocked` | `section-unlocked` | World Service | Resource Service (Lab 4), Base Service; Game subscription remains separate work |
-| `kiki_reward_granted` | `kiki-reward-granted` | Base Service | Player Service, not subscribed yet |
-| `item_crafted` | `item-crafted` | Crafting Service | Player Service, not subscribed yet |
+| Event                  | Topic                  | Published by     | Consumed by                                                     |
+| ---------------------- | ---------------------- | ---------------- | --------------------------------------------------------------- |
+| `exam_passed`          | `exam-passed`          | Exam Service     | World Service, Crafting Service                                 |
+| `achievement_unlocked` | `achievement-unlocked` | Exam Service     | Player Service, not subscribed yet                              |
+| `section_unlocked`     | `section-unlocked`     | World Service    | Resource Service, Base Service; Game Service not subscribed yet |
+| `kiki_reward_granted`  | `kiki-reward-granted`  | Base Service     | Player Service, not subscribed yet                              |
+| `item_crafted`         | `item-crafted`         | Crafting Service | Player Service, not subscribed yet                              |
 
 Topics are hyphenated because Discovery accepts only lowercase letters, digits
 and hyphens in a topic name; the payloads below are unchanged.
 
 Publishers find the Broker through one variable:
 
-| Service | Variable |
-| ------- | -------- |
+| Service                     | Variable                                                     |
+| --------------------------- | ------------------------------------------------------------ |
 | Exam, World, Base, Crafting | `BROKER_GRPC_ADDR` (`broker:50050` in the shared deployment) |
 
 Publishing never blocks the response that caused it: a submitted exam returns
@@ -1266,7 +1268,7 @@ Published by the Exam Service, consumed by the Player Service, which applies the
 
 #### `section_unlocked`
 
-Published by the World Service, consumed by the Resource Service (which creates the economy entries for the new nodes), by the Base Service (which logs it) and by the Game Service (which invalidates its map cache).
+Published by the World Service, consumed by the Resource Service (which creates the economy entries for the new nodes) and by the Base Service (which logs it). The Game Service is meant to invalidate its map cache on it, but is not subscribed yet.
 
 ```json
 {
@@ -1422,13 +1424,13 @@ Success Response (200 OK):
 
 ### Deployment and testing
 
-The shared Compose file runs `susanito88/zombie-service:3.0.0` as two replicas behind the Gateway (`http://localhost:8000`), sharing one PostgreSQL database and persistent volume. It sets `Database__ApplyMigrationsOnStartup: "true"`, so EF Core applies migrations before the API starts; no manual table creation is needed on a fresh database.
+The shared Compose file runs `susanito88/zombie-service:4.0.1` as two replicas behind the Gateway (`http://localhost:8000`), sharing one PostgreSQL database and persistent volume. It sets `Database__ApplyMigrationsOnStartup: "true"`, so EF Core applies migrations before the API starts; no manual table creation is needed on a fresh database.
 
 Import the [Zombie Postman collection](collections/zombie-service/zombie-service.postman_collection.json) and run its requests in collection order. Its `baseUrl` defaults to the Gateway, `http://localhost:8000`; the collection generates identifiers for the run. It covers type CRUD and validation. Game Service still owns live zombie instances and spawning; these requests exercise the configuration API directly.
 
 ## Resource Service
 
-Owns resource types and quantities (wood, metal scraps, paper, food), which node/player they belong to, validation and application of resource changes, and consumption for barricading, upgrading, crafting and feeding Kiki.
+Owns resource types and quantities (wood, metal, paper, food), which node/player they belong to, validation and application of resource changes, and consumption for barricading, upgrading, crafting and feeding Kiki.
 
 Does not own the physical map or resource node placement - World Service does; Resource Service references nodes by ID and holds no geography of its own.
 
@@ -1436,7 +1438,7 @@ Does not own gathering action timers or the decision that an action has complete
 
 Does not own crafting recipes or the crafting operation itself - Crafting Service does; Crafting Service requests validation/deduction of the required resources from Resource Service when a recipe is executed.
 
-Does not own new resource nodes created by map expansion - World Service decides the expansion; Resource Service consumes `SectionUnlocked` and creates the economy entries for the newly available nodes itself.
+Does not own new resource nodes created by map expansion - World Service decides the expansion; Resource Service consumes `section_unlocked` and creates the economy entries for the newly available nodes itself.
 
 ### Endpoints
 
@@ -1468,11 +1470,11 @@ Success Response (200 OK):
 
 ```json
 {
-    "node_id": "node-uuid-410",
-    "resource_type": "metal",
-    "quantity": 18,
-    "max_capacity": 50,
-    "available": true
+	"node_id": "node-uuid-410",
+	"resource_type": "metal",
+	"quantity": 18,
+	"max_capacity": 50,
+	"available": true
 }
 ```
 
@@ -1570,15 +1572,15 @@ The internal HTTP compatibility endpoint `POST /api/events/section-unlocked` (no
 
 ```json
 {
-    "event_id": "event-uuid-703",
-    "applied": true,
-    "nodes_created": 1
+	"event_id": "event-uuid-703",
+	"applied": true,
+	"nodes_created": 1
 }
 ```
 
 A previously applied `event_id` or an existing node ID returns `409 Conflict`; an invalid payload returns `422 Unprocessable Entity`. A failed operation does not partially create nodes. Because the event contract has no starting stock or capacity fields, new nodes currently use placeholder values of quantity `0` and capacity `50`.
 
-This HTTP endpoint is available for simulated World events through Postman. Automatic World-to-Resource delivery is not configured in the shared Compose file: `SECTION_UNLOCKED_SUBSCRIBERS` is currently empty.
+This HTTP endpoint is available for simulated World events through Postman. In the shared Compose file the real World events reach Resource through the Broker over gRPC (see [Events](#events)).
 
 #### Service Status
 
@@ -1592,7 +1594,7 @@ Success Response (200 OK):
 
 ### Deployment and testing
 
-The shared Compose file runs `susanito88/resource-service:3.0.0` as two replicas behind the Gateway (`http://localhost:8000`), sharing one PostgreSQL database and persistent volume. It sets `Database__ApplyMigrationsOnStartup: "true"`, so EF Core applies migrations before the API starts; no manual table creation is needed on a fresh database.
+The shared Compose file runs `susanito88/resource-service:4.0.0` as two replicas behind the Gateway (`http://localhost:8000`), sharing one PostgreSQL database and persistent volume. It sets `Database__ApplyMigrationsOnStartup: "true"`, so EF Core applies migrations before the API starts; no manual table creation is needed on a fresh database.
 
 Import the [Resource Postman collection](collections/resource-service/resource-service.postman_collection.json) and run its requests in collection order. Its `baseUrl` defaults to the Gateway, `http://localhost:8000`; the collection generates identifiers for the run. It covers node CRUD, gathering, consumption, duplicate operations and validation. Section-unlocked delivery now has a separate Broker gRPC demo in [the collection guide](collections/resource-service/README.md). The HTTP gathering/consumption calls still simulate peer requests; they do not demonstrate full integration with Game, Crafting or Base. Player IDs are accepted without checking Player Service.
 
@@ -1633,7 +1635,7 @@ Success Response (200 OK):
 }
 ```
 
-Error Responses: `404 Not Found` — no base exists for this player.
+Error Responses: `404 Not Found` — no base exists with this id.
 
 #### Reinforce a Room's Barricade
 
@@ -1686,7 +1688,7 @@ Error Responses: `404 Not Found` — facility does not exist on this base. `409 
 #### Trigger Kiki Interaction
 
 `POST /api/bases/{base_id}/kiki/interact`
-Description: Triggers a random reward interaction with Kiki, granted to the base's owner: Base publishes it as a `kiki_reward_granted` event, which the Player Service applies.
+Description: Triggers a random reward interaction with Kiki, granted to the base's owner: Base publishes it as a `kiki_reward_granted` event for the Player Service to apply; Player is not subscribed yet (see [Events](#events)).
 
 Success Response (200 OK):
 
@@ -1698,7 +1700,7 @@ Success Response (200 OK):
 }
 ```
 
-Error Responses: `429 Too Many Requests` — cooldown not elapsed
+Error Responses: `429 Too Many Requests` — cooldown not elapsed.
 
 #### Service Status
 
@@ -1774,7 +1776,7 @@ Error Responses: `404 Not Found` — unknown recipe.
 #### Craft an Item
 
 `POST /api/crafting/craft`
-Description: Attempts to craft an item. Validates the unlock condition, deducts resources via the Resource Service, and publishes the item as an `item_crafted` event, which the Player Service applies. Idempotent by `idempotency_key`, so retries or reconnects can't double-craft.
+Description: Attempts to craft an item. Validates the unlock condition, deducts resources via the Resource Service, and publishes the item as an `item_crafted` event for the Player Service to apply; Player is not subscribed yet (see [Events](#events)). Idempotent by `idempotency_key`, so retries or reconnects can't double-craft.
 
 Payload:
 
@@ -1820,6 +1822,64 @@ Success Response (200 OK):
 { "service": "crafting", "status": "ok", "uptime_seconds": 1234 }
 ```
 
+## ETL Service
+
+Owns the Data Warehouse (`warehouse-db`, Postgres): it extracts the rows of all
+eight service databases (Base, Crafting, Zombie and Resource on Postgres; Game,
+Player, Exam and World on rqlite), transforms them and loads them into the
+warehouse. It runs once at startup, then every `ETL_INTERVAL_SECONDS` (60 by
+default), and on demand through `POST /run`.
+
+Does not own any game data - every service still owns its own database. The ETL
+only reads them, over a read-only transaction on Postgres and rqlite's read
+endpoint, and never writes back. Player emails and passwords are not copied.
+
+The warehouse has two schemas:
+
+- `dw`: one table per entity or event, keyed by the id it has in its source, so a
+  repeated run updates rows instead of duplicating them. Dimensions:
+  `dim_player`, `dim_base`, `dim_recipe`, `dim_course`, `dim_zombie_type`,
+  `dim_world_room`. Facts: `fact_craft`, `fact_kiki_reward`,
+  `fact_exam_attempt`, `fact_game_session`. Snapshot:
+  `snapshot_player_resource`. Every id is `TEXT`, so tables from different
+  services join on `player_id`.
+- `etl`: `etl.runs`, one row per source and run, with its status, the rows it
+  loaded and the error when it failed.
+
+Each source loads in its own transaction: a source whose database is down is
+recorded as `failed` and retried on the next run, while the others still load.
+
+### Endpoints
+
+#### Run the ETL
+
+`POST /run`
+Description: Runs the ETL for every source now and waits for it to finish. A run
+already in progress finishes first.
+
+Success Response (200 OK):
+
+```json
+{
+	"results": [
+		{ "source": "base", "status": "ok", "rows_loaded": 2, "error": null },
+		{ "source": "zombie", "status": "failed", "rows_loaded": 0, "error": "zombie: connection refused" }
+	]
+}
+```
+
+#### Service Status
+
+`GET /health`
+Description: Health check. A source database being down does not fail it; that
+is reported per run in `etl.runs`.
+
+Success Response (200 OK):
+
+```json
+{ "status": "ok" }
+```
+
 # Technologies and Communication patterns
 
 ## Player Service
@@ -1828,11 +1888,11 @@ Success Response (200 OK):
 
 \+ Great concurrency and synchronization model. Satisfies the requirement of having atomic trading.
 
-\+ Goroutines enable small but frequent updates to the state in an concurrent context. Satisfies updating players Progression via calls from various services.
+\+ Goroutines enable small but frequent updates to the state in a concurrent context. Satisfies updating player progression via calls from various services.
 
 \+ Has battle tested libraries for working with SQL. Satisfies the requirement of having persistent storage for player's information.
 
-\- Does not provide automatic/guaranteed protections against data races. Dissatisfies the CRUD heavy nature of the service.
+\- Does not provide automatic/guaranteed protections against data races. A risk for the CRUD-heavy nature of the service.
 
 ### rqlite:
 
@@ -1846,14 +1906,13 @@ Success Response (200 OK):
 
 \- As deployed (one rqlite container per service, no replica nodes), the cluster has no quorum to fail over to. All of the network/consensus overhead is paid on every write without the fault-tolerance benefit being realized.
 
-
 ## Game Service
 
 ### Go Programming language:
 
 \+ Goroutines are cheap enough to run one per active timer/WebSocket connection. They can work with many sessions running several parallel timers each (chop, scavenge, barricade...).
 
-\+ Non-blocking I/O via goroutines lets a delegate calls to World, Resource, Base, Exam and Zombie Service concurrently.
+\+ Non-blocking I/O via goroutines lets it delegate calls to World, Resource, Base, Exam and Zombie Service concurrently.
 
 \+ Low memory overhead per goroutine means many concurrent sessions/timers can run at the same time.
 
@@ -1953,7 +2012,7 @@ PostgreSQL:
 
 \- Requires a separate database process/container, unlike an embedded engine — slightly more setup for local development.
 
-\- Out of scope for this lab stage, but unlike an embedded single-writer engine, Postgres also leaves room for horizontal read scaling later if the service ever needs it.
+\+ Not needed yet, but unlike an embedded single-writer engine, Postgres also leaves room for horizontal read scaling later if the service ever needs it.
 
 ## Crafting Service
 
@@ -2039,7 +2098,7 @@ PostgreSQL:
 
 ### Asynchronous event-driven pub/sub
 
-\+ One publisher, several consumers, none of them known to the publisher. Satisfies `section_unlocked`, consumed by both Resource Service (creates the economy entries) and Game Service (invalidates its map cache) — World Service calls neither.
+\+ One publisher, several consumers, none of them known to the publisher. Satisfies `section_unlocked`, consumed by both Resource Service (creates the economy entries) and Base Service (logs it) — World Service calls neither.
 
 \+ The publisher does not wait for the outcome. Satisfies closing an exam attempt fast: the score is returned to the player immediately, while unlocking a wing and awarding XP happen afterwards.
 
@@ -2071,31 +2130,29 @@ PostgreSQL:
 
 ## Ruleset: `main`
 
-
-| Setting                                             | Value                                |
-| --------------------------------------------------- | ------------------------------------ |
-| Target branches                                     | `main` (by pattern)                  |
+| Setting                                             | Value                               |
+| --------------------------------------------------- | ----------------------------------- |
+| Target branches                                     | `main` (by pattern)                 |
 | Require a pull request before merging               | On — 1 required approval            |
-| Dismiss stale approvals on new commits              | On                                   |
-| Require approval of the most recent reviewable push | On                                   |
-| Require conversation resolution before merging      | On                                   |
-| Restrict deletions                                  | On                                   |
-| Block force pushes                                  | On                                   |
+| Dismiss stale approvals on new commits              | On                                  |
+| Require approval of the most recent reviewable push | On                                  |
+| Require conversation resolution before merging      | On                                  |
+| Restrict deletions                                  | On                                  |
+| Block force pushes                                  | On                                  |
 | Bypass list                                         | Empty — no one bypasses these rules |
 
 ## Ruleset: `dev`
 
-
-| Setting                                             | Value                     |
-| --------------------------------------------------- | ------------------------- |
-| Target branches                                     | `dev` (by pattern)    |
+| Setting                                             | Value                    |
+| --------------------------------------------------- | ------------------------ |
+| Target branches                                     | `dev` (by pattern)       |
 | Require a pull request before merging               | On — 1 required approval |
-| Dismiss stale approvals on new commits              | On                        |
-| Require approval of the most recent reviewable push | On                        |
-| Require conversation resolution before merging      | On                        |
-| Restrict deletions                                  | On                        |
-| Block force pushes                                  | On                        |
-| Bypass list                                         | Empty                     |
+| Dismiss stale approvals on new commits              | On                       |
+| Require approval of the most recent reviewable push | On                       |
+| Require conversation resolution before merging      | On                       |
+| Restrict deletions                                  | On                       |
+| Block force pushes                                  | On                       |
+| Bypass list                                         | Empty                    |
 
 ## Merging strategy
 
@@ -2112,9 +2169,9 @@ Every PR must include:
 - **Type of change** — feature / fix / chore
 - **How it was tested**
 - **Checklist**:
-  - [ ]  Tests added/updated and passing
-  - [ ]  Self-review done
-  - [ ]  Docs updated if needed
+    - [ ] Tests added/updated and passing
+    - [ ] Self-review done
+    - [ ] Docs updated if needed
 
 ## Test coverage
 
@@ -2127,21 +2184,3 @@ Every PR must include:
 - Semantic Versioning (`MAJOR.MINOR.PATCH`)
 - Version bumped and tagged on `main` at release time
 - `dev` stays on the next `-dev` pre-release version between releases
-
-## Resource Lab 4 demo and deployment notes
-
-Use `python3 scripts/demo_resource_event.py` to publish a `section-unlocked`
-event through the Broker's real gRPC interface. The script checks Resource's
-subscription, waits until its node is readable through Gateway, and publishes
-again to check duplicate handling. The default demo node is `lab4-grpc-node`.
-The Resource collection README contains the direct Postman gRPC instructions.
-
-The Broker publishing workflow intentionally uses the spelling `messege-broker`.
-It pushes to the Docker Hub account held in its GitHub secret, `adrianburduja`,
-so the image is `adrianburduja/messege-broker`. `BROKER_IMAGE` overrides that
-complete reference. Do not substitute passwords into Git.
-
-Resource's 4.0.0 image must be published after its PR merges into main before
-using the image-only deployment. This update uses the merged Gateway and Discovery Lab 4 commits and the Broker's
-merged monitoring files plus the validation-error circuit-breaker fix. The Broker
-4.1.1-dev target must be published after that fix merges.
