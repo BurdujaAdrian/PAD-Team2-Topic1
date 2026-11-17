@@ -1,0 +1,13 @@
+# Everything the build does not need, so the context stays small and a change
+# to the README does not invalidate the build cache.
+.git
+.gitignore
+.github
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+.env
+README.md
+Dockerfile
+.dockerignore
