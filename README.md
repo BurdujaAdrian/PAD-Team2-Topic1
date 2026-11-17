@@ -121,8 +121,10 @@ changes the normal Compose database volumes.
 ## Running the Stack
 
 Everything runs from the Compose file in this repository. It pulls prebuilt
-images from Docker Hub rather than building from the submodules, so no service
-source is needed to bring the system up.
+images from Docker Hub rather than building from the submodules, so no submodule
+needs to be checked out to bring the system up. The one exception is the ETL
+Service: its source lives in this repository (`services/etl-service/`, not a
+submodule), and Compose builds it on the first `docker compose up`.
 
 ### Requirements
 
@@ -181,6 +183,8 @@ docker compose down -v  # stop and delete the data as well
 | World (2 replicas) | through the Gateway only | [`gheorghe2973/world-service`](https://hub.docker.com/r/gheorghe2973/world-service) | Gurschi Gheorghe |
 | Player | <http://localhost:8085> | [`adrianburduja/player-service`](https://hub.docker.com/r/adrianburduja/player-service) | Burduja Adrian |
 | Game | <http://localhost:8086> | [`adrianburduja/game-service`](https://hub.docker.com/r/adrianburduja/game-service) | Burduja Adrian |
+| ETL | <http://localhost:8700> (loopback only) | built from [`services/etl-service`](services/etl-service/) | Vornicescu Ion |
+| Data Warehouse (Postgres) | `127.0.0.1:5436` | [`postgres`](https://hub.docker.com/_/postgres) | see [ETL Service](#etl-service) |
 
 The Compose file pins each image to a version tag, so `docker compose up` always
 brings up the same build rather than whatever `latest` happens to be.
@@ -199,7 +203,8 @@ Exam, World, Zombie and Resource replicas join the Discovery Service on startup;
 at <http://localhost:8500/api/registry/services>. Every Exam, World, Zombie and Resource
 response names the replica that produced it in `X-Service-Instance`.
 
-Each exposes `GET /api/status` as a health check. The database ports are bound
+Each exposes `GET /api/status` as a health check; the ETL Service exposes
+`GET /health` instead. The database ports are bound
 to `127.0.0.1` only, so they are reachable for debugging but not from the
 network.
 
@@ -1818,6 +1823,64 @@ Success Response (200 OK):
 
 ```json
 { "service": "crafting", "status": "ok", "uptime_seconds": 1234 }
+```
+
+## ETL Service
+
+Owns the Data Warehouse (`warehouse-db`, Postgres): it extracts the rows of all
+eight service databases (Base, Crafting, Zombie and Resource on Postgres; Game,
+Player, Exam and World on rqlite), transforms them and loads them into the
+warehouse. It runs once at startup, then every `ETL_INTERVAL_SECONDS` (60 by
+default), and on demand through `POST /run`.
+
+Does not own any game data - every service still owns its own database. The ETL
+only reads them, over a read-only transaction on Postgres and rqlite's read
+endpoint, and never writes back. Player emails and passwords are not copied.
+
+The warehouse has two schemas:
+
+- `dw`: one table per entity or event, keyed by the id it has in its source, so a
+  repeated run updates rows instead of duplicating them. Dimensions:
+  `dim_player`, `dim_base`, `dim_recipe`, `dim_course`, `dim_zombie_type`,
+  `dim_world_room`. Facts: `fact_craft`, `fact_kiki_reward`,
+  `fact_exam_attempt`, `fact_game_session`. Snapshot:
+  `snapshot_player_resource`. Every id is `TEXT`, so tables from different
+  services join on `player_id`.
+- `etl`: `etl.runs`, one row per source and run, with its status, the rows it
+  loaded and the error when it failed.
+
+Each source loads in its own transaction: a source whose database is down is
+recorded as `failed` and retried on the next run, while the others still load.
+
+### Endpoints
+
+#### Run the ETL
+
+`POST /run`
+Description: Runs the ETL for every source now and waits for it to finish. A run
+already in progress finishes first.
+
+Success Response (200 OK):
+
+```json
+{
+	"results": [
+		{ "source": "base", "status": "ok", "rows_loaded": 2, "error": null },
+		{ "source": "zombie", "status": "failed", "rows_loaded": 0, "error": "zombie: connection refused" }
+	]
+}
+```
+
+#### Service Status
+
+`GET /health`
+Description: Health check. A source database being down does not fail it; that
+is reported per run in `etl.runs`.
+
+Success Response (200 OK):
+
+```json
+{ "status": "ok" }
 ```
 
 # Technologies and Communication patterns
