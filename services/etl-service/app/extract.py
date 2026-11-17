@@ -41,4 +41,4 @@ def read_rqlite(url: str, query: str) -> list[dict]:
         raise ExtractError(f"{url}: {result['error']}")
     columns = result["columns"]
     # rqlite leaves "values" out when the table is empty.
-    return [dict(zip(columns, row)) for row in result.get("values", [])]
+    return [dict(zip(columns, row, strict=True)) for row in result.get("values", [])]

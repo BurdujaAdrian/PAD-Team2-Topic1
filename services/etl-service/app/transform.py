@@ -32,29 +32,38 @@ def base() -> list[Load]:
     )
     rewards = read_postgres(
         "base",
-        'SELECT "Id", "BaseId", "RewardType", "GrantedToPlayerId", "GrantedAtUtc" FROM "KikiRewards"',
+        'SELECT "Id", "BaseId", "RewardType", "GrantedToPlayerId", "GrantedAtUtc" '
+        'FROM "KikiRewards"',
     )
     return [
-        ("dim_base", ["base_id"], [
-            {
-                "base_id": text(row["Id"]),
-                "player_id": text(row["PlayerId"]),
-                "defense_score": row["DefenseScore"],
-                "storage_capacity": row["StorageCapacity"],
-                "created_at": row["CreatedAtUtc"],
-            }
-            for row in bases
-        ]),
-        ("fact_kiki_reward", ["reward_id"], [
-            {
-                "reward_id": text(row["Id"]),
-                "base_id": text(row["BaseId"]),
-                "player_id": text(row["GrantedToPlayerId"]),
-                "reward_type": row["RewardType"],
-                "granted_at": row["GrantedAtUtc"],
-            }
-            for row in rewards
-        ]),
+        (
+            "dim_base",
+            ["base_id"],
+            [
+                {
+                    "base_id": text(row["Id"]),
+                    "player_id": text(row["PlayerId"]),
+                    "defense_score": row["DefenseScore"],
+                    "storage_capacity": row["StorageCapacity"],
+                    "created_at": row["CreatedAtUtc"],
+                }
+                for row in bases
+            ],
+        ),
+        (
+            "fact_kiki_reward",
+            ["reward_id"],
+            [
+                {
+                    "reward_id": text(row["Id"]),
+                    "base_id": text(row["BaseId"]),
+                    "player_id": text(row["GrantedToPlayerId"]),
+                    "reward_type": row["RewardType"],
+                    "granted_at": row["GrantedAtUtc"],
+                }
+                for row in rewards
+            ],
+        ),
     ]
 
 
@@ -66,33 +75,42 @@ def crafting() -> list[Load]:
     )
     crafts = read_postgres(
         "crafting",
-        'SELECT "Id", "PlayerId", "RecipeId", "ItemType", "Quantity", "CraftedAtUtc" FROM "CraftRecords"',
+        'SELECT "Id", "PlayerId", "RecipeId", "ItemType", "Quantity", "CraftedAtUtc" '
+        'FROM "CraftRecords"',
     )
     return [
-        ("dim_recipe", ["recipe_id"], [
-            {
-                "recipe_id": text(row["Id"]),
-                "name": row["Name"],
-                "output_item": row["OutputItem"],
-                "output_quantity": row["OutputQuantity"],
-                "unlock_condition_type": row["UnlockConditionType"],
-                "unlock_course_id": row["UnlockCourseId"],
-                "unlock_level": row["UnlockLevel"],
-                "created_at": row["CreatedAtUtc"],
-            }
-            for row in recipes
-        ]),
-        ("fact_craft", ["craft_id"], [
-            {
-                "craft_id": text(row["Id"]),
-                "player_id": text(row["PlayerId"]),
-                "recipe_id": text(row["RecipeId"]),
-                "item_type": row["ItemType"],
-                "quantity": row["Quantity"],
-                "crafted_at": row["CraftedAtUtc"],
-            }
-            for row in crafts
-        ]),
+        (
+            "dim_recipe",
+            ["recipe_id"],
+            [
+                {
+                    "recipe_id": text(row["Id"]),
+                    "name": row["Name"],
+                    "output_item": row["OutputItem"],
+                    "output_quantity": row["OutputQuantity"],
+                    "unlock_condition_type": row["UnlockConditionType"],
+                    "unlock_course_id": row["UnlockCourseId"],
+                    "unlock_level": row["UnlockLevel"],
+                    "created_at": row["CreatedAtUtc"],
+                }
+                for row in recipes
+            ],
+        ),
+        (
+            "fact_craft",
+            ["craft_id"],
+            [
+                {
+                    "craft_id": text(row["Id"]),
+                    "player_id": text(row["PlayerId"]),
+                    "recipe_id": text(row["RecipeId"]),
+                    "item_type": row["ItemType"],
+                    "quantity": row["Quantity"],
+                    "crafted_at": row["CraftedAtUtc"],
+                }
+                for row in crafts
+            ],
+        ),
     ]
 
 
@@ -103,20 +121,24 @@ def zombie() -> list[Load]:
         '"PerceptionRadius", "Abilities", "Active" FROM zombie_types',
     )
     return [
-        ("dim_zombie_type", ["zombie_type_id"], [
-            {
-                "zombie_type_id": row["ZombieTypeId"],
-                "name": row["Name"],
-                "category": row["Category"],
-                "health": row["Health"],
-                "speed": row["Speed"],
-                "attack_strength": row["AttackStrength"],
-                "perception_radius": row["PerceptionRadius"],
-                "abilities": row["Abilities"],
-                "active": row["Active"],
-            }
-            for row in types
-        ]),
+        (
+            "dim_zombie_type",
+            ["zombie_type_id"],
+            [
+                {
+                    "zombie_type_id": row["ZombieTypeId"],
+                    "name": row["Name"],
+                    "category": row["Category"],
+                    "health": row["Health"],
+                    "speed": row["Speed"],
+                    "attack_strength": row["AttackStrength"],
+                    "perception_radius": row["PerceptionRadius"],
+                    "abilities": row["Abilities"],
+                    "active": row["Active"],
+                }
+                for row in types
+            ],
+        ),
     ]
 
 
@@ -126,14 +148,18 @@ def resource() -> list[Load]:
         'SELECT "PlayerId", "ResourceType", "Quantity" FROM player_resources',
     )
     return [
-        ("snapshot_player_resource", ["player_id", "resource_type"], [
-            {
-                "player_id": row["PlayerId"],
-                "resource_type": row["ResourceType"],
-                "quantity": row["Quantity"],
-            }
-            for row in resources
-        ]),
+        (
+            "snapshot_player_resource",
+            ["player_id", "resource_type"],
+            [
+                {
+                    "player_id": row["PlayerId"],
+                    "resource_type": row["ResourceType"],
+                    "quantity": row["Quantity"],
+                }
+                for row in resources
+            ],
+        ),
     ]
 
 
@@ -144,21 +170,27 @@ def game() -> list[Load]:
         "SELECT id, host_player_id, map_id, status, result, created_at, ended_at FROM sessions",
     )
     # The warehouse keeps how many players a session had, not who they were.
-    players = Counter(row["session_id"] for row in read_rqlite(url, "SELECT session_id FROM session_players"))
+    players = Counter(
+        row["session_id"] for row in read_rqlite(url, "SELECT session_id FROM session_players")
+    )
     return [
-        ("fact_game_session", ["session_id"], [
-            {
-                "session_id": row["id"],
-                "host_player_id": row["host_player_id"],
-                "map_id": row["map_id"],
-                "status": row["status"],
-                "result": row["result"],
-                "player_count": players[row["id"]],
-                "created_at": moment(row["created_at"]),
-                "ended_at": moment(row["ended_at"]),
-            }
-            for row in sessions
-        ]),
+        (
+            "fact_game_session",
+            ["session_id"],
+            [
+                {
+                    "session_id": row["id"],
+                    "host_player_id": row["host_player_id"],
+                    "map_id": row["map_id"],
+                    "status": row["status"],
+                    "result": row["result"],
+                    "player_count": players[row["id"]],
+                    "created_at": moment(row["created_at"]),
+                    "ended_at": moment(row["ended_at"]),
+                }
+                for row in sessions
+            ],
+        ),
     ]
 
 
@@ -170,16 +202,20 @@ def player() -> list[Load]:
         "SELECT id, username, xp, level, online_status FROM players",
     )
     return [
-        ("dim_player", ["player_id"], [
-            {
-                "player_id": row["id"],
-                "username": row["username"],
-                "xp": row["xp"],
-                "level": row["level"],
-                "online_status": row["online_status"],
-            }
-            for row in players
-        ]),
+        (
+            "dim_player",
+            ["player_id"],
+            [
+                {
+                    "player_id": row["id"],
+                    "username": row["username"],
+                    "xp": row["xp"],
+                    "level": row["level"],
+                    "online_status": row["online_status"],
+                }
+                for row in players
+            ],
+        ),
     ]
 
 
@@ -196,15 +232,19 @@ def exam() -> list[Load]:
     )
     return [
         ("dim_course", ["course_id"], courses),
-        ("fact_exam_attempt", ["attempt_id"], [
-            {
-                **row,
-                "started_at": moment(row["started_at"]),
-                "submitted_at": moment(row["submitted_at"]),
-                "passed": flag(row["passed"]),
-            }
-            for row in attempts
-        ]),
+        (
+            "fact_exam_attempt",
+            ["attempt_id"],
+            [
+                {
+                    **row,
+                    "started_at": moment(row["started_at"]),
+                    "submitted_at": moment(row["submitted_at"]),
+                    "passed": flag(row["passed"]),
+                }
+                for row in attempts
+            ],
+        ),
     ]
 
 
@@ -218,19 +258,23 @@ def world() -> list[Load]:
         for row in read_rqlite(url, "SELECT section_id, name, unlocked FROM sections")
     }
     return [
-        ("dim_world_room", ["room_id"], [
-            {
-                "room_id": row["room_id"],
-                "world_id": row["world_id"],
-                "section_id": row["section_id"],
-                "section_name": sections.get(row["section_id"], {}).get("name"),
-                "section_unlocked": flag(sections.get(row["section_id"], {}).get("unlocked")),
-                "room_name": row["name"],
-                "room_type": row["type"],
-                "floor": row["floor"],
-            }
-            for row in rooms
-        ]),
+        (
+            "dim_world_room",
+            ["room_id"],
+            [
+                {
+                    "room_id": row["room_id"],
+                    "world_id": row["world_id"],
+                    "section_id": row["section_id"],
+                    "section_name": sections.get(row["section_id"], {}).get("name"),
+                    "section_unlocked": flag(sections.get(row["section_id"], {}).get("unlocked")),
+                    "room_name": row["name"],
+                    "room_type": row["type"],
+                    "floor": row["floor"],
+                }
+                for row in rooms
+            ],
+        ),
     ]
 
 
