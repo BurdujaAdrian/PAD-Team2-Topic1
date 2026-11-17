@@ -10,6 +10,59 @@ x-system-logging: &system-logging
         syslog-format: rfc5424micro
         tag: "{{.Name}}"
 
+# Every node of a database cluster runs the same image: Postgres with repmgr,
+# which streams each write to the standbys and promotes one of them when the
+# primary stops answering. The old primary rejoins as a standby when it is back.
+x-base-db: &base-db
+    logging: *system-logging
+    image: bitnamilegacy/postgresql-repmgr:17.6.0-debian-12-r2
+    restart: unless-stopped
+    depends_on:
+        broker:
+            condition: service_healthy
+    healthcheck:
+        test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${BASE_POSTGRES_USER} -d ${BASE_POSTGRES_DB}"]
+        interval: 5s
+        timeout: 5s
+        retries: 20
+
+x-base-db-env: &base-db-env
+    POSTGRESQL_DATABASE: ${BASE_POSTGRES_DB}
+    POSTGRESQL_USERNAME: ${BASE_POSTGRES_USER}
+    POSTGRESQL_PASSWORD: ${BASE_POSTGRES_PASSWORD}
+    POSTGRESQL_POSTGRES_PASSWORD: ${BASE_POSTGRES_ADMIN_PASSWORD}
+    REPMGR_PASSWORD: ${BASE_REPMGR_PASSWORD}
+    # Only read on the very first start, to pick who initializes the cluster;
+    # after a failover the nodes find the current primary themselves.
+    REPMGR_PRIMARY_HOST: base-db-1
+    REPMGR_PARTNER_NODES: base-db-1,base-db-2,base-db-3
+    REPMGR_PORT_NUMBER: 5432
+
+x-crafting-db: &crafting-db
+    logging: *system-logging
+    image: bitnamilegacy/postgresql-repmgr:17.6.0-debian-12-r2
+    restart: unless-stopped
+    depends_on:
+        broker:
+            condition: service_healthy
+    healthcheck:
+        test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${CRAFTING_POSTGRES_USER} -d ${CRAFTING_POSTGRES_DB}"]
+        interval: 5s
+        timeout: 5s
+        retries: 20
+
+x-crafting-db-env: &crafting-db-env
+    POSTGRESQL_DATABASE: ${CRAFTING_POSTGRES_DB}
+    POSTGRESQL_USERNAME: ${CRAFTING_POSTGRES_USER}
+    POSTGRESQL_PASSWORD: ${CRAFTING_POSTGRES_PASSWORD}
+    POSTGRESQL_POSTGRES_PASSWORD: ${CRAFTING_POSTGRES_ADMIN_PASSWORD}
+    REPMGR_PASSWORD: ${CRAFTING_REPMGR_PASSWORD}
+    # Only read on the very first start, to pick who initializes the cluster;
+    # after a failover the nodes find the current primary themselves.
+    REPMGR_PRIMARY_HOST: crafting-db-1
+    REPMGR_PARTNER_NODES: crafting-db-1,crafting-db-2,crafting-db-3
+    REPMGR_PORT_NUMBER: 5432
+
 services:
     # ---------------------------------------------------------------------
     # Gateway
@@ -123,39 +176,47 @@ services:
     # ---------------------------------------------------------------------
     # Base Service
     # ---------------------------------------------------------------------
-    base-db:
-        logging: *system-logging
-        depends_on:
-            broker:
-                condition: service_healthy
-        image: postgres:16
-        container_name: cpr-base-postgres
-        restart: unless-stopped
+    base-db-1:
+        <<: *base-db
+        container_name: cpr-base-db-1
         environment:
-            POSTGRES_DB: ${BASE_POSTGRES_DB}
-            POSTGRES_USER: ${BASE_POSTGRES_USER}
-            POSTGRES_PASSWORD: ${BASE_POSTGRES_PASSWORD}
-        ports:
-            - "127.0.0.1:5432:5432"
+            <<: *base-db-env
+            REPMGR_NODE_NAME: base-db-1
+            REPMGR_NODE_NETWORK_NAME: base-db-1
         volumes:
-            - base_pgdata:/var/lib/postgresql/data
-        healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U ${BASE_POSTGRES_USER} -d ${BASE_POSTGRES_DB}"]
-            interval: 10s
-            timeout: 5s
-            retries: 5
+            - base_db_1:/bitnami/postgresql
+    base-db-2:
+        <<: *base-db
+        container_name: cpr-base-db-2
+        environment:
+            <<: *base-db-env
+            REPMGR_NODE_NAME: base-db-2
+            REPMGR_NODE_NETWORK_NAME: base-db-2
+        volumes:
+            - base_db_2:/bitnami/postgresql
+    base-db-3:
+        <<: *base-db
+        container_name: cpr-base-db-3
+        environment:
+            <<: *base-db-env
+            REPMGR_NODE_NAME: base-db-3
+            REPMGR_NODE_NETWORK_NAME: base-db-3
+        volumes:
+            - base_db_3:/bitnami/postgresql
 
     base-api:
         logging: *system-logging
         image: ion04/base-service:4.1.0
         restart: unless-stopped
-        # Two instances sharing base-db. No container_name and no host port:
+        # Two instances sharing the base-db cluster. No container_name and no host port:
         # replicas cannot share either, so Base is reached through the Gateway.
         deploy:
             replicas: 2
         environment:
             ASPNETCORE_ENVIRONMENT: Production
-            ConnectionStrings__DefaultConnection: Host=base-db;Port=5432;Database=${BASE_POSTGRES_DB};Username=${BASE_POSTGRES_USER};Password=${BASE_POSTGRES_PASSWORD}
+            # Npgsql tries the nodes in order and keeps the one that accepts
+            # writes, so after a failover Base follows the new primary by itself.
+            ConnectionStrings__DefaultConnection: Host=base-db-1,base-db-2,base-db-3;Port=5432;Database=${BASE_POSTGRES_DB};Username=${BASE_POSTGRES_USER};Password=${BASE_POSTGRES_PASSWORD};Target Session Attributes=primary
             # Every call to World and Resource goes through the Broker.
             # Required: the service refuses to start without it.
             BROKER_URL: http://broker:8080
@@ -168,39 +229,49 @@ services:
         depends_on:
             broker:
                 condition: service_healthy
-            base-db:
+            base-db-1:
+                condition: service_healthy
+            base-db-2:
+                condition: service_healthy
+            base-db-3:
                 condition: service_healthy
 
     # ---------------------------------------------------------------------
     # Crafting Service
     # ---------------------------------------------------------------------
-    crafting-db:
-        logging: *system-logging
-        depends_on:
-            broker:
-                condition: service_healthy
-        image: postgres:17
-        container_name: cpr-crafting-postgres
-        restart: unless-stopped
+    crafting-db-1:
+        <<: *crafting-db
+        container_name: cpr-crafting-db-1
         environment:
-            POSTGRES_DB: ${CRAFTING_POSTGRES_DB}
-            POSTGRES_USER: ${CRAFTING_POSTGRES_USER}
-            POSTGRES_PASSWORD: ${CRAFTING_POSTGRES_PASSWORD}
-        ports:
-            - "127.0.0.1:5433:5432"
+            <<: *crafting-db-env
+            REPMGR_NODE_NAME: crafting-db-1
+            REPMGR_NODE_NETWORK_NAME: crafting-db-1
         volumes:
-            - crafting_pgdata:/var/lib/postgresql/data
-        healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U ${CRAFTING_POSTGRES_USER} -d ${CRAFTING_POSTGRES_DB}"]
-            interval: 5s
-            timeout: 5s
-            retries: 10
+            - crafting_db_1:/bitnami/postgresql
+    crafting-db-2:
+        <<: *crafting-db
+        container_name: cpr-crafting-db-2
+        environment:
+            <<: *crafting-db-env
+            REPMGR_NODE_NAME: crafting-db-2
+            REPMGR_NODE_NETWORK_NAME: crafting-db-2
+        volumes:
+            - crafting_db_2:/bitnami/postgresql
+    crafting-db-3:
+        <<: *crafting-db
+        container_name: cpr-crafting-db-3
+        environment:
+            <<: *crafting-db-env
+            REPMGR_NODE_NAME: crafting-db-3
+            REPMGR_NODE_NETWORK_NAME: crafting-db-3
+        volumes:
+            - crafting_db_3:/bitnami/postgresql
 
     crafting-api:
         logging: *system-logging
-        image: ion04/crafting-service:4.2.0
+        image: ion04/crafting-service:5.0.0
         restart: unless-stopped
-        # Two instances sharing crafting-db. No container_name and no host port:
+        # Two instances sharing the crafting-db cluster. No container_name and no host port:
         # replicas cannot share either, so Crafting is reached through the Gateway.
         deploy:
             replicas: 2
@@ -208,7 +279,9 @@ services:
             POSTGRES_DB: ${CRAFTING_POSTGRES_DB}
             POSTGRES_USER: ${CRAFTING_POSTGRES_USER}
             POSTGRES_PASSWORD: ${CRAFTING_POSTGRES_PASSWORD}
-            POSTGRES_HOST: crafting-db
+            # Every node of the cluster: Crafting connects to the one that accepts
+            # writes, so after a failover it follows the new primary by itself.
+            POSTGRES_HOST: crafting-db-1,crafting-db-2,crafting-db-3
             POSTGRES_PORT: 5432
             # Every call to Resource, Player and Exam goes through the Broker.
             # Required: the service refuses to start without it.
@@ -222,7 +295,11 @@ services:
         depends_on:
             broker:
                 condition: service_healthy
-            crafting-db:
+            crafting-db-1:
+                condition: service_healthy
+            crafting-db-2:
+                condition: service_healthy
+            crafting-db-3:
                 condition: service_healthy
 
     # ---------------------------------------------------------------------
@@ -562,12 +639,12 @@ services:
             WAREHOUSE_POSTGRES_USER: ${WAREHOUSE_POSTGRES_USER}
             WAREHOUSE_POSTGRES_PASSWORD: ${WAREHOUSE_POSTGRES_PASSWORD}
             # Sources on Postgres.
-            BASE_POSTGRES_HOST: base-db
+            BASE_POSTGRES_HOST: base-db-1,base-db-2,base-db-3
             BASE_POSTGRES_PORT: 5432
             BASE_POSTGRES_DB: ${BASE_POSTGRES_DB}
             BASE_POSTGRES_USER: ${BASE_POSTGRES_USER}
             BASE_POSTGRES_PASSWORD: ${BASE_POSTGRES_PASSWORD}
-            CRAFTING_POSTGRES_HOST: crafting-db
+            CRAFTING_POSTGRES_HOST: crafting-db-1,crafting-db-2,crafting-db-3
             CRAFTING_POSTGRES_PORT: 5432
             CRAFTING_POSTGRES_DB: ${CRAFTING_POSTGRES_DB}
             CRAFTING_POSTGRES_USER: ${CRAFTING_POSTGRES_USER}
@@ -597,8 +674,12 @@ services:
 
 volumes:
     broker_data:
-    base_pgdata:
-    crafting_pgdata:
+    base_db_1:
+    base_db_2:
+    base_db_3:
+    crafting_db_1:
+    crafting_db_2:
+    crafting_db_3:
     zombie_pgdata:
     resource_pgdata:
     game-data:

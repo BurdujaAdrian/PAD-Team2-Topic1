@@ -41,18 +41,7 @@ does not hold up requests to the others.
 | Prometheus | `prom/prometheus:v3.5.0`                                  | `http://localhost:9090` (loopback only) |
 
 These are the tags the Compose file pins, and every one of them is published on
-Docker Hub, so `docker compose up -d` pulls them. To build the Gateway, the
-Broker, Discovery and Resource from their submodules instead, initialize them
-and add the build override:
-
-```sh
-git submodule update --init services/gateway-service services/message-broker services/discovery-service services/resource-service
-docker compose -f docker-compose.yml -f docker-compose.lab4-build.yml up -d --build
-```
-
-For only the Zombie/Resource demonstration, append
-`gateway discovery broker zombie-api resource-api` to that command. Database
-dependencies start automatically.
+Docker Hub, so `docker compose up -d` pulls them.
 
 ### Download system logs
 
@@ -2004,21 +1993,21 @@ Success Response (200 OK):
 
 PostgreSQL:
 
-\+ Runs as its own container via Docker Compose, decoupled from the API process — matches how the rest of the team's services are deployed and lets the database be scaled/managed independently.
+\+ Runs as a cluster of three nodes (`base-db-1` to `base-db-3`) with streaming replication: one primary takes the writes and two standbys keep a copy. repmgr promotes a standby when the primary stops answering, and the old primary rejoins as a standby once it is back.
+
+\+ Base follows the new primary without code: its connection string lists the three nodes with `Target Session Attributes=primary`, so Npgsql connects to whichever node accepts writes.
 
 \+ ACID transactions across related tables (base, rooms, barricades, facilities) let a single upgrade update several fields as one atomic unit, rather than building atomicity by hand.
 
 \+ Relational model with foreign keys (cascading deletes) fits the base → rooms → facilities/barricades hierarchy directly, and EF Core + Npgsql give strongly-typed migrations and querying.
 
-\- Requires a separate database process/container, unlike an embedded engine — slightly more setup for local development.
-
-\+ Not needed yet, but unlike an embedded single-writer engine, Postgres also leaves room for horizontal read scaling later if the service ever needs it.
+\- Three database containers instead of one, and a failover is not instant: writes fail for about 15 seconds until a standby is promoted.
 
 ## Crafting Service
 
 ### C# Programming language:
 
-\+ Database transactions via EF Core map cleanly onto the "validate → deduct → grant" sequence the crafting operation must perform atomically. Satisfies the lab's explicit atomicity requirement for crafting.
+\+ Database transactions via EF Core map cleanly onto the "validate → deduct → grant" sequence the crafting operation must perform atomically. Satisfies the atomicity requirement for crafting.
 
 \+ Strong typing on recipe definitions (inputs, outputs, unlock conditions) reduces the risk of a malformed recipe silently consuming resources without granting an item.
 
@@ -2030,11 +2019,11 @@ PostgreSQL:
 
 \+ ACID transactions guarantee the craft operation is genuinely all-or-nothing: if granting the item fails after resources were deducted, the transaction rolls back cleanly instead of leaving the player short on materials with nothing to show for it.
 
-\+ Runs as its own container via Docker Compose, decoupled from the API process — matches how the rest of the team's services are deployed and keeps recipe/craft-history data isolated from other services.
+\+ Runs as a cluster of three nodes (`crafting-db-1` to `crafting-db-3`) with streaming replication and repmgr failover, the same way as Base; Crafting connects to whichever node is the primary.
 
 \+ Unique constraint on `idempotency_key` per craft record gives duplicate-request protection at the schema level, and MVCC lets concurrent craft attempts from different players proceed without serializing on a single writer lock.
 
-\- Requires a separate database process/container, unlike an embedded engine — slightly more setup for local development.
+\- Three database containers instead of one, and a failover is not instant: writes fail for about 15 seconds until a standby is promoted.
 
 \- Some operational overhead (connection pooling, migrations against a running server) that an embedded engine wouldn't need, though not significant at this data volume.
 
