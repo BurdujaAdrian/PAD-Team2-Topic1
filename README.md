@@ -172,6 +172,7 @@ docker compose down -v  # stop and delete the data as well
 | Game                      | <http://localhost:8086>                 | [`adrianburduja/game-service`](https://hub.docker.com/r/adrianburduja/game-service)     | Burduja Adrian                  |
 | ETL                       | <http://localhost:8700> (loopback only) | built from [`services/etl-service`](services/etl-service/)                              | Vornicescu Ion                  |
 | Data Warehouse | `127.0.0.1:5436`                        | [`postgres`](https://hub.docker.com/_/postgres)                                         | see [ETL Service](#etl-service) |
+| Cache (Redis)             | inside the Compose network only         | [`redis`](https://hub.docker.com/_/redis)                                               | see [Response cache](#response-cache) |
 
 The Compose file pins each image to a version tag, so `docker compose up` always
 brings up the same build rather than whatever `latest` happens to be.
@@ -194,6 +195,10 @@ Each exposes `GET /api/status` as a health check; the ETL Service exposes
 `GET /health` instead. The database ports are bound
 to `127.0.0.1` only, so they are reachable for debugging but not from the
 network.
+
+### Response cache
+
+Base and Crafting answer `GET /api/bases/{base_id}`, `GET /api/recipes` and `GET /api/recipes/{recipe_id}` from a Redis cache, the `cache` container, which only the other containers can reach. Both replicas of a service share its entries; a write clears the entry it changes, and every entry also expires after `CACHE_TTL_SECONDS` (60 by default). Redis only speeds reads up: with it stopped, the services read their databases as before. The *Cache* section of each service's README lists what is cached and what clears it.
 
 ### Testing it
 
