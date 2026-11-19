@@ -10,6 +10,18 @@ x-system-logging: &system-logging
         syslog-format: rfc5424micro
         tag: "{{.Name}}"
 
+# Every cache node runs the same Redis; only the name differs.
+x-cache-node: &cache-node
+    logging: *system-logging
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+        test: ["CMD", "redis-cli", "ping"]
+        interval: 5s
+        timeout: 3s
+        retries: 10
+
 # Every node of a database cluster runs the same image: Postgres with repmgr,
 # which streams each write to the standbys and promotes one of them when the
 # primary stops answering. The old primary rejoins as a standby when it is back.
@@ -176,21 +188,23 @@ services:
     # ---------------------------------------------------------------------
     # Response cache
     # ---------------------------------------------------------------------
-    # Base and Crafting keep their GET answers here, each under its own key prefix, so every
-    # replica reads the same entries. Nothing is kept for good: no volume, no persistence, and
-    # the least recently used keys go when the memory limit is reached. The services do not
-    # wait for it (no depends_on): without Redis they read the database.
-    cache:
-        logging: *system-logging
-        image: redis:7.4-alpine
-        container_name: cpr-cache
-        restart: unless-stopped
-        command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
-        healthcheck:
-            test: ["CMD", "redis-cli", "ping"]
-            interval: 5s
-            timeout: 3s
-            retries: 10
+    # Three Redis nodes. Base and Crafting shard their GET answers over them by consistent
+    # hashing: every key has one node, the same for every replica, and when a node stops
+    # only its keys move to the next one. Each service keeps its keys under its own prefix.
+    # Nothing is kept for good: no volume, no persistence, and the least recently used keys
+    # go when a node's memory limit is reached. The services do not wait for the nodes
+    # (no depends_on): without them they read the database.
+    cache-1:
+        <<: *cache-node
+        container_name: cpr-cache-1
+
+    cache-2:
+        <<: *cache-node
+        container_name: cpr-cache-2
+
+    cache-3:
+        <<: *cache-node
+        container_name: cpr-cache-3
 
     # ---------------------------------------------------------------------
     # Base Service
@@ -225,7 +239,7 @@ services:
 
     base-api:
         logging: *system-logging
-        image: ion04/base-service:5.0.0
+        image: ion04/base-service:5.1.0
         restart: unless-stopped
         # Two instances sharing the base-db cluster. No container_name and no host port:
         # replicas cannot share either, so Base is reached through the Gateway.
@@ -245,9 +259,11 @@ services:
             BROKER_GRPC_ADDR: broker:50050
             # Each replica registers here on startup so the Broker can find it.
             DISCOVERY_URL: http://discovery:8080
-            # GET /api/bases/{id} is answered from here. Optional: without it every read
-            # goes to the database.
-            REDIS_ADDR: cache:6379
+            # GET /api/bases/{id} is answered from these Redis nodes, sharded by consistent
+            # hashing. Optional: without it every read goes to the database.
+            REDIS_ADDR: cache-1:6379,cache-2:6379,cache-3:6379
+            # Only the cache's logs at Debug: which node every base was read from or stored on.
+            Logging__LogLevel__src.Infrastructure.Caching: Debug
         depends_on:
             broker:
                 condition: service_healthy
@@ -291,7 +307,7 @@ services:
 
     crafting-api:
         logging: *system-logging
-        image: ion04/crafting-service:5.1.0
+        image: ion04/crafting-service:5.2.0
         restart: unless-stopped
         # Two instances sharing the crafting-db cluster. No container_name and no host port:
         # replicas cannot share either, so Crafting is reached through the Gateway.
@@ -314,9 +330,11 @@ services:
             BROKER_GRPC_ADDR: broker:50050
             # Each replica registers here on startup so the Broker can find it.
             DISCOVERY_URL: http://discovery:8080
-            # GET /api/recipes and GET /api/recipes/{id} are answered from here. Optional:
-            # without it every read goes to the database.
-            REDIS_ADDR: cache:6379
+            # GET /api/recipes and GET /api/recipes/{id} are answered from these Redis nodes,
+            # sharded by consistent hashing. Optional: without it every read goes to the database.
+            REDIS_ADDR: cache-1:6379,cache-2:6379,cache-3:6379
+            # Only the cache's logs at Debug: which node every recipe was read from or stored on.
+            Logging__LogLevel__src.Infrastructure.Caching: Debug
         depends_on:
             broker:
                 condition: service_healthy
