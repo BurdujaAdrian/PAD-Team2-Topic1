@@ -1560,6 +1560,77 @@ Success Response (200 OK):
 
 Error Responses: `409 Conflict` - transaction already applied. `422 Unprocessable Entity` - insufficient resources.
 
+#### Prepare Resource Consumption (Lab 5)
+
+`POST /api/resource-transactions/prepare` accepts the same JSON payload as `consume`.
+It reserves resources without deducting the stored balance. Both `prepare` and
+`consume` use available stock: stored stock minus all active reservations.
+
+```json
+{
+  "transaction_id": "craft-transaction-uuid-901",
+  "player_id": "player-uuid-123",
+  "reason": "crafting",
+  "items": [{ "resource_type": "wood", "quantity": 5 }, { "resource_type": "metal", "quantity": 2 }]
+}
+```
+
+`200 OK`:
+
+```json
+{"transaction_id":"craft-transaction-uuid-901","state":"prepared","player_id":"player-uuid-123"}
+```
+
+- An identical retry while prepared returns the same response without reserving again; item order is ignored.
+- `409`: ID already committed/aborted/used by consume, or reused with a different player, reason or items.
+- `422`: insufficient available resources or invalid payload. Nothing is reserved; a corrected request can retry the ID.
+
+#### Commit Prepared Resource Consumption (Lab 5)
+
+`POST /api/resource-transactions/{transaction_id}/commit`, no body.
+
+`200 OK`:
+
+```json
+{"transaction_id":"craft-transaction-uuid-901","state":"committed","remaining":{"wood":19,"metal":6,"paper":0,"food":0}}
+```
+
+Deduction and the terminal decision are atomic. Repeated commits return the saved
+first response, even if later operations change the player's balance. The remaining
+map reports stored stock, includes all four supported resource types, and is not an
+available-stock calculation. `404`: no reservation exists. `409`: ID is aborted.
+
+#### Abort Resource Reservation (Lab 5)
+
+`POST /api/resource-transactions/{transaction_id}/abort`, no body.
+
+`200 OK`:
+
+```json
+{"transaction_id":"craft-transaction-uuid-901","state":"aborted"}
+```
+
+Releases the reservation without deducting anything. Repeated aborts succeed.
+An unknown ID is persisted as an aborted tombstone; a delayed prepare then receives
+`409`. Aborting a committed reservation or an ID already applied by `consume`
+returns `409` (an immediate consume is already committed).
+
+Reservations, terminal decisions and commit response snapshots are persisted in
+PostgreSQL (`resource_reservations`) and survive replica/container restarts.
+There is **no automatic expiry**. Base/Crafting's coordinator owns the durable
+commit/abort decision and crash recovery. The service's existing PostgreSQL advisory
+transaction lock serializes all writes across replicas, including prepare, consume,
+commit and abort; no database transaction stays open between HTTP requests. This is
+the Resource participant for the agreed application-level two-phase protocol, not a
+complete cross-service coordinator or PostgreSQL `PREPARE TRANSACTION` implementation.
+
+Existing `consume` retains its immediate deduction, response and duplicate-409
+behavior, while respecting reserved stock and rejecting reservation IDs. Player
+balance GETs still report stored stock. Coordinators must use globally unique IDs
+and retry the same decision after ambiguous network failures. Do not delete terminal
+records while late requests can still arrive. A lost coordinator can leave resources
+reserved indefinitely; recovery is the coordinator's responsibility.
+
 #### Receive a Section Unlocked Event
 
 The internal HTTP compatibility endpoint `POST /api/events/section-unlocked` (not exposed by Gateway) accepts the `section_unlocked` payload documented in [Events](#events). It validates the node-to-room references and creates the resource nodes in one database transaction. Success returns `200 OK`:
