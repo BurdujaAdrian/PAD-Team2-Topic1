@@ -91,6 +91,459 @@
       "name": "25 Delete event node",
       "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/api/resource-nodes/event-node-{{run_id}}" },
       "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));"] } }]
+    },
+    {
+      "name": "Lab 5 - Resource two-phase reservations",
+      "description": "Run in order against Resource 5.0.0. Creates isolated demo IDs. Reservations do not expire. For restart verification prepare a new ID, restart Resource, then commit that ID. Existing Lab 4 folders remain unchanged.",
+      "item": [
+        {
+          "name": "01 Seed wood node",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/resource-nodes",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"node_id\": \"2pc-node-{{twoPhaseRun}}\",\n  \"resource_type\": \"wood\",\n  \"quantity\": 20,\n  \"max_capacity\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"twoPhaseRun\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02 Gather 20 wood",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/resource-transactions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action_id\": \"2pc-node-{{twoPhaseRun}}\",\n  \"player_id\": \"2pc-player-{{twoPhaseRun}}\",\n  \"node_id\": \"2pc-node-{{twoPhaseRun}}\",\n  \"resource_type\": \"wood\",\n  \"quantity\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03 Prepare 5 wood",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/resource-transactions/prepare",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transaction_id\": \"2pc-{{twoPhaseRun}}\",\n  \"player_id\": \"2pc-player-{{twoPhaseRun}}\",\n  \"reason\": \"crafting\",\n  \"items\": [\n    {\n      \"resource_type\": \"wood\",\n      \"quantity\": 5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04 Repeat prepare (no second reservation)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/resource-transactions/prepare",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transaction_id\": \"2pc-{{twoPhaseRun}}\",\n  \"player_id\": \"2pc-player-{{twoPhaseRun}}\",\n  \"reason\": \"crafting\",\n  \"items\": [\n    {\n      \"resource_type\": \"wood\",\n      \"quantity\": 5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05 Cannot consume reserved wood",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/resource-transactions/consume",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transaction_id\": \"2pc-{{twoPhaseRun}}-blocked\",\n  \"player_id\": \"2pc-player-{{twoPhaseRun}}\",\n  \"reason\": \"crafting\",\n  \"items\": [\n    {\n      \"resource_type\": \"wood\",\n      \"quantity\": 16\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 422\", () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06 Cannot over-reserve",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/resource-transactions/prepare",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transaction_id\": \"2pc-{{twoPhaseRun}}-blocked-prepare\",\n  \"player_id\": \"2pc-player-{{twoPhaseRun}}\",\n  \"reason\": \"crafting\",\n  \"items\": [\n    {\n      \"resource_type\": \"wood\",\n      \"quantity\": 16\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 422\", () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07 Commit",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/resource-transactions/2pc-{{twoPhaseRun}}/commit"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"15 wood remains\", () => pm.expect(pm.response.json().remaining.wood).to.eql(15));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "08 Repeat commit",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/resource-transactions/2pc-{{twoPhaseRun}}/commit"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"still 15 wood\", () => pm.expect(pm.response.json().remaining.wood).to.eql(15));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "09 Cannot abort committed",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/resource-transactions/2pc-{{twoPhaseRun}}/abort"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10 Prepare another reservation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/resource-transactions/prepare",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transaction_id\": \"2pc-{{twoPhaseRun}}-release\",\n  \"player_id\": \"2pc-player-{{twoPhaseRun}}\",\n  \"reason\": \"crafting\",\n  \"items\": [\n    {\n      \"resource_type\": \"wood\",\n      \"quantity\": 5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11 Abort reservation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/resource-transactions/2pc-{{twoPhaseRun}}-release/abort"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12 Repeat abort",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/resource-transactions/2pc-{{twoPhaseRun}}-release/abort"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "13 Cannot commit aborted",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/resource-transactions/2pc-{{twoPhaseRun}}-release/commit"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "14 Abort unknown ID",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/resource-transactions/2pc-{{twoPhaseRun}}-late/abort"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15 Late prepare rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/resource-transactions/prepare",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transaction_id\": \"2pc-{{twoPhaseRun}}-late\",\n  \"player_id\": \"2pc-player-{{twoPhaseRun}}\",\n  \"reason\": \"crafting\",\n  \"items\": [\n    {\n      \"resource_type\": \"wood\",\n      \"quantity\": 5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "16 Unknown commit",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/resource-transactions/2pc-{{twoPhaseRun}}-unknown/commit"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "17 Balance unchanged by abort",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/players/2pc-player-{{twoPhaseRun}}/resources"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"15 wood remains\", () => pm.expect(pm.response.json().resources.find(x => x.resource_type === \"wood\").quantity).to.eql(15));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }
