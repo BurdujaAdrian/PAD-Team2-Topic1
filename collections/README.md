@@ -44,6 +44,8 @@ npx newman run collections/exam-service/exam-service.postman_collection.json \
   -e collections/exam-service/exam-service.local.postman_environment.json
 ```
 
+Lab 5 adds one folder to each. Exam's **Lab 5 – two-phase commit** passes Mathematical Analysis with a fresh player and checks that the attempt is submitted and the East Wing is unlocked in World, the two changes the two-phase commit makes together; it also checks that World's `/internal` routes are not reachable through the Gateway. World's **Lab 5 – two-phase commit (participant)** calls those routes through the Broker (`brokerUrl` = `http://localhost:8600`) and walks one transaction through prepare, abort and the refusals that follow, for a course that opens no section, so the map does not change. Neither folder unlocks the North Wing, which World's *Locked rooms* folder needs locked, so the two collections can run in any order.
+
 ## Conventions
 
 - Name files `<service-name>.postman_collection.json`.

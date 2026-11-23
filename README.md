@@ -198,7 +198,7 @@ network.
 
 ### Response cache
 
-Base and Crafting answer `GET /api/bases/{base_id}`, `GET /api/recipes` and `GET /api/recipes/{recipe_id}` from a Redis cache of three nodes, `cache-1`, `cache-2` and `cache-3`, which only the other containers can reach. Both services shard their keys over the three by consistent hashing: every key has one node, the same for both replicas, and when a node stops only its keys move to the next node until it is back. Both replicas of a service share its entries; a write clears the entry it changes, and every entry also expires after `CACHE_TTL_SECONDS` (60 by default). Redis only speeds reads up: with the nodes stopped, the services read their databases as before. The *Cache* section of each service's README lists what is cached and what clears it.
+Base and Crafting answer `GET /api/bases/{base_id}`, `GET /api/recipes` and `GET /api/recipes/{recipe_id}` from a Redis cache of three nodes, `cache-1`, `cache-2` and `cache-3`, which only the other containers can reach. Exam answers its course catalogue, question bank and achievement list from the same nodes, and World every piece of the campus map, so `GET /api/worlds/{world_id}/map` comes from Redis after the first request. Every service shards its keys over the three by consistent hashing: every key has one node, the same for both replicas, and when a node stops only its keys move to the next node until it is back. The keys start with the service's name (`exam:`, `world:`), so the services sharing the nodes never read each other's entries. Both replicas of a service share its entries; a write clears the entries it changes (World clears all of its entries, because the pieces of the map depend on each other), and every entry also expires after `CACHE_TTL_SECONDS` (60 by default). Redis only speeds reads up: with the nodes stopped, the services read their databases as before. The *Cache* section of each service's README lists what is cached and what clears it.
 
 ### Testing it
 
@@ -868,7 +868,7 @@ Error Responses: `409 Conflict` — attempt already submitted or expired. `422 U
 
 #### Finish the Exam
 
-`POST /api/exams/attempts/{attempt_id}/submit` Description: Finalises the attempt, computes the score and publishes the resulting events. Idempotent — a second call returns the stored result.
+`POST /api/exams/attempts/{attempt_id}/submit` Description: Finalises the attempt, computes the score and publishes the resulting events. Idempotent — a second call returns the stored result. A passed attempt is closed together with its section unlock in the World Service through a two-phase commit (Lab 5): Exam is the coordinator, World the participant, and the steps travel through the Broker. Both databases change, or neither does.
 
 Success Response (200 OK):
 
@@ -886,6 +886,8 @@ Success Response (200 OK):
 	"submitted_at": "2026-09-08T14:36:12Z"
 }
 ```
+
+Error Responses: `409 Conflict` — the attempt was cancelled, or is being submitted right now (status `committing`). `503 Service Unavailable` — the World Service could not prepare the unlock; nothing changed, the attempt is still `in_progress`, and the call can be repeated.
 
 #### Get Academic Progress
 
@@ -1149,6 +1151,43 @@ Success Response (201 Created):
 ```
 
 Success Response (200 OK): the section was already unlocked, `already_unlocked` is `true`.
+
+#### Two-phase commit (internal)
+
+World's side of the two-phase commit that closes a passed exam (Lab 5). The routes are under `/internal`, which the Gateway does not route; the Exam Service calls them through the Broker, as `/send/world/internal/unlock-transactions/...`. Every step is idempotent, and the unlock's trigger is the attempt ID, so a section is unlocked once per attempt.
+
+| Endpoint | Does | Answers |
+| -------- | ---- | ------- |
+| `POST /internal/unlock-transactions` | Prepare: checks the world, finds the section the course opens and holds the unlock (the yes vote) | `200` prepared; `404` unknown world, `409` already aborted (no votes) |
+| `POST /internal/unlock-transactions/{transaction_id}/commit` | Unlocks the section and publishes `section-unlocked` | `200` committed; `404` never prepared, `409` aborted |
+| `POST /internal/unlock-transactions/{transaction_id}/abort` | Drops the unlock; an unknown transaction is recorded as aborted, so a late prepare is refused | `200` aborted; `409` already committed |
+| `GET /internal/unlock-transactions/{transaction_id}` | Where the transaction stands | `200`; `404` |
+
+Prepare payload:
+
+```json
+{
+	"transaction_id": "5c4ad6bf-dd6b-413a-8bbb-fef89c8925d2",
+	"trigger_id": "attempt-uuid-001",
+	"course_id": "operating_systems"
+}
+```
+
+Every route answers with the transaction:
+
+```json
+{
+	"transaction_id": "5c4ad6bf-dd6b-413a-8bbb-fef89c8925d2",
+	"trigger_id": "attempt-uuid-001",
+	"world_id": "utm_campus",
+	"course_id": "operating_systems",
+	"section_id": "section_north",
+	"state": "prepared",
+	"updated_at": "2026-11-23T22:16:34Z"
+}
+```
+
+A section or world held by a prepared transaction cannot be deleted (`409 Conflict`) until the Exam Service decides.
 
 #### Consume `exam_passed`
 

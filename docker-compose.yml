@@ -613,7 +613,7 @@ services:
 
     exam-api:
         logging: *system-logging
-        image: gheorghe2973/exam-service:5.0.0
+        image: gheorghe2973/exam-service:5.3.0
         restart: unless-stopped
         # Two instances sharing exam-db. No container_name and no host port:
         # replicas cannot share either, so Exam is reached through the Gateway.
@@ -622,6 +622,12 @@ services:
         environment:
             # Every node of the cluster: the service follows the leader.
             RQLITE_URL: http://exam-db:4001,http://exam-db-2:4001,http://exam-db-3:4001
+            # Cached reads go to these Redis nodes, sharded by consistent hashing;
+            # the keys start with exam:. With the nodes down, reads go to rqlite.
+            REDIS_ADDR: cache-1:6379,cache-2:6379,cache-3:6379
+            # A passed exam is closed together with its section unlock in World
+            # through a two-phase commit; the steps go through the Broker.
+            WORLD_TRANSACTIONS_URL: http://broker:8080/send/world/internal/unlock-transactions
             # Both replicas seed at boot; rows that already exist are skipped.
             SEED_ON_START: "true"
             # exam-passed and achievement-unlocked are handed to the Broker over
@@ -709,7 +715,7 @@ services:
 
     world-api:
         logging: *system-logging
-        image: gheorghe2973/world-service:5.0.0
+        image: gheorghe2973/world-service:5.3.0
         restart: unless-stopped
         # Two instances sharing world-db. No container_name and no host port:
         # replicas cannot share either, so World is reached through the Gateway.
@@ -718,6 +724,9 @@ services:
         environment:
             # Every node of the cluster: the service follows the leader.
             RQLITE_URL: http://world-db:4001,http://world-db-2:4001,http://world-db-3:4001
+            # Cached reads go to these Redis nodes, sharded by consistent hashing;
+            # the keys start with world:. With the nodes down, reads go to rqlite.
+            REDIS_ADDR: cache-1:6379,cache-2:6379,cache-3:6379
             # Both replicas seed at boot; rows that already exist are skipped.
             SEED_ON_START: "true"
             # section-unlocked is handed to the Broker over gRPC. exam-passed
