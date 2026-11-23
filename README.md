@@ -2017,11 +2017,11 @@ Success Response (200 OK):
 
 \+ Data is small and bounded: a static question bank plus one semester of attempts. Satisfies the per-service database requirement without operational weight.
 
-\+ Raft replication is built in. A later high-availability requirement means adding nodes, not migrating.
+\+ Runs as a cluster of three nodes (`exam-db`, `exam-db-2`, `exam-db-3`) with Raft replication: every node keeps a full copy, and when the leader stops the other two elect a new one within seconds. The service is given every node and follows the leader, so it keeps answering through the failover.
 
 \- No interactive transactions: `BEGIN`/`COMMIT` across requests is undefined. Every multi-step write either fits in one batch or is made idempotent instead, which is why attempts are keyed by `encounter_id`.
 
-\- One node serves exactly one database, so the service carries its own rqlite container.
+\- Three database containers instead of one, and every write waits until two of the three nodes have it. With two nodes down there is no majority and the database stops answering until one is back.
 
 \- The Go client is not `database/sql`, so the repository layer departs from the usual Go idiom.
 
@@ -2047,11 +2047,11 @@ Success Response (200 OK):
 
 \+ A section's rooms, adjacency, nodes and spawn points insert as one batched request, applied atomically and keyed by `trigger_id`. Satisfies idempotent event consumption.
 
-\+ Raft replication is built in. A later high-availability requirement means adding nodes, not migrating.
+\+ Runs as a cluster of three nodes (`world-db`, `world-db-2`, `world-db-3`) with Raft replication: every node keeps a full copy, and when the leader stops the other two elect a new one within seconds. The service is given every node and follows the leader, so it keeps answering through the failover.
 
 \- No interactive transactions: `BEGIN`/`COMMIT` across requests is undefined. Unlocking is written as a single batch instead, and replays are caught by the stored `trigger_id`.
 
-\- One node serves exactly one database, so the service carries its own rqlite container.
+\- Three database containers instead of one, and every write waits until two of the three nodes have it. With two nodes down there is no majority and the database stops answering until one is back.
 
 \- No graph traversal. Pathfinding, if needed later, lives in application code.
 

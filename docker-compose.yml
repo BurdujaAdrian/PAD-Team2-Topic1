@@ -542,6 +542,9 @@ services:
     # ---------------------------------------------------------------------
     # Exam Service
     # ---------------------------------------------------------------------
+    # exam-db, exam-db-2 and exam-db-3 are one rqlite cluster: every write is
+    # replicated over Raft, and when the leader stops the other two elect a new
+    # one. exam-db starts the cluster; the other two join it.
     exam-db:
         logging: *system-logging
         depends_on:
@@ -566,16 +569,59 @@ services:
             timeout: 5s
             retries: 5
 
+    exam-db-2:
+        logging: *system-logging
+        image: rqlite/rqlite:10.3.6
+        restart: unless-stopped
+        # Replica 2 of exam-db: joins the cluster through exam-db, keeps a full
+        # copy of the data and can become the leader. No host port.
+        command:
+            - -node-id=exam-2
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=exam-db-2:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=exam-db-2:4002
+            - -join=exam-db:4002
+        volumes:
+            - exam_rqlite_data_2:/rqlite/file
+        healthcheck:
+            test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    exam-db-3:
+        logging: *system-logging
+        image: rqlite/rqlite:10.3.6
+        restart: unless-stopped
+        # Replica 3 of exam-db: joins the cluster through exam-db, keeps a full
+        # copy of the data and can become the leader. No host port.
+        command:
+            - -node-id=exam-3
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=exam-db-3:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=exam-db-3:4002
+            - -join=exam-db:4002
+        volumes:
+            - exam_rqlite_data_3:/rqlite/file
+        healthcheck:
+            test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
     exam-api:
         logging: *system-logging
-        image: gheorghe2973/exam-service:4.0.0
+        image: gheorghe2973/exam-service:5.0.0
         restart: unless-stopped
         # Two instances sharing exam-db. No container_name and no host port:
         # replicas cannot share either, so Exam is reached through the Gateway.
         deploy:
             replicas: 2
         environment:
-            RQLITE_URL: http://exam-db:4001
+            # Every node of the cluster: the service follows the leader.
+            RQLITE_URL: http://exam-db:4001,http://exam-db-2:4001,http://exam-db-3:4001
             # Both replicas seed at boot; rows that already exist are skipped.
             SEED_ON_START: "true"
             # exam-passed and achievement-unlocked are handed to the Broker over
@@ -592,6 +638,9 @@ services:
     # ---------------------------------------------------------------------
     # World Service
     # ---------------------------------------------------------------------
+    # world-db, world-db-2 and world-db-3 are one rqlite cluster: every write is
+    # replicated over Raft, and when the leader stops the other two elect a new
+    # one. world-db starts the cluster; the other two join it.
     world-db:
         logging: *system-logging
         depends_on:
@@ -616,16 +665,59 @@ services:
             timeout: 5s
             retries: 5
 
+    world-db-2:
+        logging: *system-logging
+        image: rqlite/rqlite:10.3.6
+        restart: unless-stopped
+        # Replica 2 of world-db: joins the cluster through world-db, keeps a full
+        # copy of the data and can become the leader. No host port.
+        command:
+            - -node-id=world-2
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=world-db-2:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=world-db-2:4002
+            - -join=world-db:4002
+        volumes:
+            - world_rqlite_data_2:/rqlite/file
+        healthcheck:
+            test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    world-db-3:
+        logging: *system-logging
+        image: rqlite/rqlite:10.3.6
+        restart: unless-stopped
+        # Replica 3 of world-db: joins the cluster through world-db, keeps a full
+        # copy of the data and can become the leader. No host port.
+        command:
+            - -node-id=world-3
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=world-db-3:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=world-db-3:4002
+            - -join=world-db:4002
+        volumes:
+            - world_rqlite_data_3:/rqlite/file
+        healthcheck:
+            test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
     world-api:
         logging: *system-logging
-        image: gheorghe2973/world-service:4.0.0
+        image: gheorghe2973/world-service:5.0.0
         restart: unless-stopped
         # Two instances sharing world-db. No container_name and no host port:
         # replicas cannot share either, so World is reached through the Gateway.
         deploy:
             replicas: 2
         environment:
-            RQLITE_URL: http://world-db:4001
+            # Every node of the cluster: the service follows the leader.
+            RQLITE_URL: http://world-db:4001,http://world-db-2:4001,http://world-db-3:4001
             # Both replicas seed at boot; rows that already exist are skipped.
             SEED_ON_START: "true"
             # section-unlocked is handed to the Broker over gRPC. exam-passed
@@ -728,7 +820,11 @@ volumes:
     game-data:
     player-data:
     exam_rqlite_data:
+    exam_rqlite_data_2:
+    exam_rqlite_data_3:
     world_rqlite_data:
+    world_rqlite_data_2:
+    world_rqlite_data_3:
     prometheus_data:
     grafana_data:
     warehouse_pgdata:
