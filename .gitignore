@@ -5,3 +5,6 @@
 .vs/
 .vscode/
 .idea/
+
+# Local database migration backups
+backups/

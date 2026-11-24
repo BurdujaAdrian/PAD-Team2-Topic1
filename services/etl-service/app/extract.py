@@ -18,6 +18,7 @@ def read_postgres(name: str, query: str) -> list[dict]:
         with psycopg.connect(
             settings().postgres_dsn(name),
             connect_timeout=TIMEOUT_SECONDS,
+            target_session_attrs="read-write" if name in {"zombie", "resource"} else "any",
             row_factory=dict_row,
         ) as conn:
             # The ETL only reads from the service databases; a read-only
