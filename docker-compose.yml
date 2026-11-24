@@ -75,6 +75,70 @@ x-crafting-db-env: &crafting-db-env
     REPMGR_PARTNER_NODES: crafting-db-1,crafting-db-2,crafting-db-3
     REPMGR_PORT_NUMBER: 5432
 
+x-zombie-cluster: &zombie-cluster
+    image: bitnamilegacy/postgresql-repmgr:17.6.0-debian-12-r2
+    platform: linux/amd64
+    entrypoint: ["/bin/bash", "/config/postgres-start.sh"]
+    logging: *system-logging
+    restart: unless-stopped
+    healthcheck:
+        test: ["CMD-SHELL", "test -f /opt/bitnami/postgresql/tmp/.initialized && pg_isready -h 127.0.0.1 -U ${ZOMBIE_POSTGRES_USER} -d ${ZOMBIE_POSTGRES_DB}"]
+        interval: 5s
+        timeout: 3s
+        retries: 30
+        start_period: 90s
+
+x-zombie-cluster-env: &zombie-cluster-env
+    POSTGRESQL_DATABASE: ${ZOMBIE_POSTGRES_DB}
+    POSTGRESQL_USERNAME: ${ZOMBIE_POSTGRES_USER}
+    POSTGRESQL_PASSWORD: ${ZOMBIE_POSTGRES_PASSWORD}
+    POSTGRESQL_POSTGRES_PASSWORD: ${ZOMBIE_POSTGRES_ADMIN_PASSWORD}
+    REPMGR_PASSWORD: ${ZOMBIE_REPMGR_PASSWORD}
+    REPMGR_PRIMARY_HOST: zombie-db-1
+    REPMGR_PARTNER_NODES: zombie-db-1,zombie-db-2,zombie-db-3
+    REPMGR_NODE_PRIORITY: "100"
+    REPMGR_FENCE_OLD_PRIMARY: "yes"
+    REPMGR_CHILD_NODES_DISCONNECT_TIMEOUT: "60"
+    PGOPTIONS: "-c synchronous_commit=local" # repmgr metadata only; API writes stay synchronous
+    REPMGR_CONNECT_TIMEOUT: "2"
+    REPMGR_RECONNECT_ATTEMPTS: "3"
+    REPMGR_RECONNECT_INTERVAL: "2"
+    POSTGRESQL_NUM_SYNCHRONOUS_REPLICAS: "1"
+    POSTGRESQL_SYNCHRONOUS_REPLICAS_MODE: ANY
+    POSTGRESQL_SYNCHRONOUS_COMMIT_MODE: "on"
+
+x-resource-cluster: &resource-cluster
+    image: bitnamilegacy/postgresql-repmgr:17.6.0-debian-12-r2
+    platform: linux/amd64
+    entrypoint: ["/bin/bash", "/config/postgres-start.sh"]
+    logging: *system-logging
+    restart: unless-stopped
+    healthcheck:
+        test: ["CMD-SHELL", "test -f /opt/bitnami/postgresql/tmp/.initialized && pg_isready -h 127.0.0.1 -U ${RESOURCE_POSTGRES_USER} -d ${RESOURCE_POSTGRES_DB}"]
+        interval: 5s
+        timeout: 3s
+        retries: 30
+        start_period: 90s
+
+x-resource-cluster-env: &resource-cluster-env
+    POSTGRESQL_DATABASE: ${RESOURCE_POSTGRES_DB}
+    POSTGRESQL_USERNAME: ${RESOURCE_POSTGRES_USER}
+    POSTGRESQL_PASSWORD: ${RESOURCE_POSTGRES_PASSWORD}
+    POSTGRESQL_POSTGRES_PASSWORD: ${RESOURCE_POSTGRES_ADMIN_PASSWORD}
+    REPMGR_PASSWORD: ${RESOURCE_REPMGR_PASSWORD}
+    REPMGR_PRIMARY_HOST: resource-db-1
+    REPMGR_PARTNER_NODES: resource-db-1,resource-db-2,resource-db-3
+    REPMGR_NODE_PRIORITY: "100"
+    REPMGR_FENCE_OLD_PRIMARY: "yes"
+    REPMGR_CHILD_NODES_DISCONNECT_TIMEOUT: "60"
+    PGOPTIONS: "-c synchronous_commit=local" # repmgr metadata only; API writes stay synchronous
+    REPMGR_CONNECT_TIMEOUT: "2"
+    REPMGR_RECONNECT_ATTEMPTS: "3"
+    REPMGR_RECONNECT_INTERVAL: "2"
+    POSTGRESQL_NUM_SYNCHRONOUS_REPLICAS: "1"
+    POSTGRESQL_SYNCHRONOUS_REPLICAS_MODE: ANY
+    POSTGRESQL_SYNCHRONOUS_COMMIT_MODE: "on"
+
 services:
     # ---------------------------------------------------------------------
     # Gateway
@@ -348,7 +412,9 @@ services:
     # ---------------------------------------------------------------------
     # Zombie Service
     # ---------------------------------------------------------------------
+    # Retained only for a deliberate dump/restore from the old single database.
     zombie-db:
+        profiles: [legacy-databases]
         logging: *system-logging
         depends_on:
             broker:
@@ -370,29 +436,67 @@ services:
             timeout: 5s
             retries: 5
 
+    zombie-db-1:
+        <<: *zombie-cluster
+        environment:
+            <<: *zombie-cluster-env
+            REPMGR_NODE_NAME: zombie-db-1
+            REPMGR_NODE_NETWORK_NAME: zombie-db-1
+        volumes:
+            - zombie_db_1:/bitnami/postgresql
+            - ./deploy/postgres-start.sh:/config/postgres-start.sh:ro
+
+    zombie-db-2:
+        <<: *zombie-cluster
+        environment:
+            <<: *zombie-cluster-env
+            REPMGR_NODE_NAME: zombie-db-2
+            REPMGR_NODE_NETWORK_NAME: zombie-db-2
+        volumes:
+            - zombie_db_2:/bitnami/postgresql
+            - ./deploy/postgres-start.sh:/config/postgres-start.sh:ro
+
+    zombie-db-3:
+        <<: *zombie-cluster
+        environment:
+            <<: *zombie-cluster-env
+            REPMGR_NODE_NAME: zombie-db-3
+            REPMGR_NODE_NETWORK_NAME: zombie-db-3
+        volumes:
+            - zombie_db_3:/bitnami/postgresql
+            - ./deploy/postgres-start.sh:/config/postgres-start.sh:ro
+
     zombie-api:
         logging: *system-logging
-        image: susanito88/zombie-service:4.0.1
+        image: susanito88/zombie-service:5.0.0
         restart: unless-stopped
-        # Two instances sharing zombie-db. No container_name and no host port:
+        # Two instances sharing the zombie database cluster. No container_name and no host port:
         # replicas cannot share either, so Zombie is reached through the Gateway.
         deploy:
             replicas: 2
         environment:
-            ConnectionStrings__Database: Host=zombie-db;Port=5432;Database=${ZOMBIE_POSTGRES_DB};Username=${ZOMBIE_POSTGRES_USER};Password=${ZOMBIE_POSTGRES_PASSWORD}
+            ConnectionStrings__Database: Host=zombie-db-1,zombie-db-2,zombie-db-3;Target Session Attributes=primary;Host Recheck Seconds=1;Timeout=3;Port=5432;Database=${ZOMBIE_POSTGRES_DB};Username=${ZOMBIE_POSTGRES_USER};Password=${ZOMBIE_POSTGRES_PASSWORD}
+            REDIS_ADDR: cache-1:6379,cache-2:6379,cache-3:6379
+            Cache__TtlSeconds: "60"
             Database__ApplyMigrationsOnStartup: "true"
             # Each replica registers here on startup so the Broker can find it.
             DISCOVERY_URL: http://discovery:8080
         depends_on:
             broker:
                 condition: service_healthy
-            zombie-db:
+            zombie-db-1:
+                condition: service_healthy
+            zombie-db-2:
+                condition: service_healthy
+            zombie-db-3:
                 condition: service_healthy
 
     # ---------------------------------------------------------------------
     # Resource Service
     # ---------------------------------------------------------------------
+    # Retained only for a deliberate dump/restore from the old single database.
     resource-db:
+        profiles: [legacy-databases]
         logging: *system-logging
         depends_on:
             broker:
@@ -414,23 +518,59 @@ services:
             timeout: 5s
             retries: 5
 
+    resource-db-1:
+        <<: *resource-cluster
+        environment:
+            <<: *resource-cluster-env
+            REPMGR_NODE_NAME: resource-db-1
+            REPMGR_NODE_NETWORK_NAME: resource-db-1
+        volumes:
+            - resource_db_1:/bitnami/postgresql
+            - ./deploy/postgres-start.sh:/config/postgres-start.sh:ro
+
+    resource-db-2:
+        <<: *resource-cluster
+        environment:
+            <<: *resource-cluster-env
+            REPMGR_NODE_NAME: resource-db-2
+            REPMGR_NODE_NETWORK_NAME: resource-db-2
+        volumes:
+            - resource_db_2:/bitnami/postgresql
+            - ./deploy/postgres-start.sh:/config/postgres-start.sh:ro
+
+    resource-db-3:
+        <<: *resource-cluster
+        environment:
+            <<: *resource-cluster-env
+            REPMGR_NODE_NAME: resource-db-3
+            REPMGR_NODE_NETWORK_NAME: resource-db-3
+        volumes:
+            - resource_db_3:/bitnami/postgresql
+            - ./deploy/postgres-start.sh:/config/postgres-start.sh:ro
+
     resource-api:
         logging: *system-logging
-        image: susanito88/resource-service:4.0.0
+        image: susanito88/resource-service:5.1.0
         restart: unless-stopped
-        # Two instances sharing resource-db. No container_name and no host port:
+        # Two instances sharing the resource database cluster. No container_name and no host port:
         # replicas cannot share either, so Resource is reached through the Gateway.
         deploy:
             replicas: 2
         environment:
-            ConnectionStrings__Database: Host=resource-db;Port=5432;Database=${RESOURCE_POSTGRES_DB};Username=${RESOURCE_POSTGRES_USER};Password=${RESOURCE_POSTGRES_PASSWORD}
+            ConnectionStrings__Database: Host=resource-db-1,resource-db-2,resource-db-3;Target Session Attributes=primary;Host Recheck Seconds=1;Timeout=3;Port=5432;Database=${RESOURCE_POSTGRES_DB};Username=${RESOURCE_POSTGRES_USER};Password=${RESOURCE_POSTGRES_PASSWORD}
+            REDIS_ADDR: cache-1:6379,cache-2:6379,cache-3:6379
+            Cache__TtlSeconds: "60"
             Database__ApplyMigrationsOnStartup: "true"
             # Each replica registers here on startup so the Broker can find it.
             DISCOVERY_URL: http://discovery:8080
         depends_on:
             broker:
                 condition: service_healthy
-            resource-db:
+            resource-db-1:
+                condition: service_healthy
+            resource-db-2:
+                condition: service_healthy
+            resource-db-3:
                 condition: service_healthy
 
     # ---------------------------------------------------------------------
@@ -692,12 +832,12 @@ services:
             CRAFTING_POSTGRES_DB: ${CRAFTING_POSTGRES_DB}
             CRAFTING_POSTGRES_USER: ${CRAFTING_POSTGRES_USER}
             CRAFTING_POSTGRES_PASSWORD: ${CRAFTING_POSTGRES_PASSWORD}
-            ZOMBIE_POSTGRES_HOST: zombie-db
+            ZOMBIE_POSTGRES_HOST: zombie-db-1,zombie-db-2,zombie-db-3
             ZOMBIE_POSTGRES_PORT: 5432
             ZOMBIE_POSTGRES_DB: ${ZOMBIE_POSTGRES_DB}
             ZOMBIE_POSTGRES_USER: ${ZOMBIE_POSTGRES_USER}
             ZOMBIE_POSTGRES_PASSWORD: ${ZOMBIE_POSTGRES_PASSWORD}
-            RESOURCE_POSTGRES_HOST: resource-db
+            RESOURCE_POSTGRES_HOST: resource-db-1,resource-db-2,resource-db-3
             RESOURCE_POSTGRES_PORT: 5432
             RESOURCE_POSTGRES_DB: ${RESOURCE_POSTGRES_DB}
             RESOURCE_POSTGRES_USER: ${RESOURCE_POSTGRES_USER}
@@ -732,3 +872,9 @@ volumes:
     prometheus_data:
     grafana_data:
     warehouse_pgdata:
+    zombie_db_1:
+    zombie_db_2:
+    zombie_db_3:
+    resource_db_1:
+    resource_db_2:
+    resource_db_3:

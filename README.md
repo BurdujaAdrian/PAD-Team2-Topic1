@@ -200,6 +200,12 @@ network.
 
 Base and Crafting answer `GET /api/bases/{base_id}`, `GET /api/recipes` and `GET /api/recipes/{recipe_id}` from a Redis cache of three nodes, `cache-1`, `cache-2` and `cache-3`, which only the other containers can reach. Both services shard their keys over the three by consistent hashing: every key has one node, the same for both replicas, and when a node stops only its keys move to the next node until it is back. Both replicas of a service share its entries; a write clears the entry it changes, and every entry also expires after `CACHE_TTL_SECONDS` (60 by default). Redis only speeds reads up: with the nodes stopped, the services read their databases as before. The *Cache* section of each service's README lists what is cached and what clears it.
 
+### Zombie and Resource storage
+
+Zombie `5.0.0` and Resource `5.1.0` use three-node PostgreSQL/repmgr clusters and the shared Redis nodes. Their GET caches use consistent hashing; `X-Cache`/`X-Cache-Shard` show the result. A transactional UUID invalidates cached data across API replicas; Redis outages fall back to PostgreSQL. ETL follows the writable primary. Publish/merge the service releases before deploying these CPR image tags.
+
+Set the new `*_POSTGRES_ADMIN_PASSWORD` and `*_REPMGR_PASSWORD` values from `.env.example`. The clusters use **new volumes**: migrate old data before switching (see `scripts/import-service-database.sh`); old databases remain under profile `legacy-databases`. Never use `down -v` to migrate. Synchronous replication tolerates one stopped database node; a brief election can fail requests, and network-partition fencing is outside this deployment.
+
 ### Testing it
 
 The Postman collections in [`collections/`](collections/) target these ports.

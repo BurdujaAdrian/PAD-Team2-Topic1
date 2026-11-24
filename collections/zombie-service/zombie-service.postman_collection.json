@@ -67,6 +67,63 @@
       "name": "27 Deleted zombie missing",
       "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/zombies/types/{{zombie_id}}" },
       "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test(\"HTTP 404\", () => pm.response.to.have.status(404));"] } }]
+    },
+{
+  "name": "Shared cache checks",
+  "description": "Run both requests consecutively without writes. Uses a unique query value for a cold key. Works directly on API or through a proxy that preserves X-Cache headers.",
+  "item": [
+    {
+      "name": "First read: MISS",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/zombies/types?cache_demo={{cacheRun}}"
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set(\"cacheRun\", pm.variables.replaceIn(\"{{$guid}}\"));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"Cache MISS\", () => pm.expect(pm.response.headers.get(\"X-Cache\")).to.eql(\"MISS\"));",
+              "pm.test(\"Shard identified\", () => pm.expect(pm.response.headers.get(\"X-Cache-Shard\")).to.be.a(\"string\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Repeat read: HIT",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/zombies/types?cache_demo={{cacheRun}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"Cache HIT\", () => pm.expect(pm.response.headers.get(\"X-Cache\")).to.eql(\"HIT\"));",
+              "pm.test(\"Shard identified\", () => pm.expect(pm.response.headers.get(\"X-Cache-Shard\")).to.be.a(\"string\"));"
+            ]
+          }
+        }
+      ]
     }
+  ]
+}
   ]
 }
