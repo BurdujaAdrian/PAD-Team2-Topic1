@@ -1436,6 +1436,371 @@
           ]
         }
       ]
+    },
+    {
+      "name": "9. Lab 5 – two-phase commit",
+      "description": "Lab 5: passing an exam changes two databases, the attempt in Exam's and the section unlock in World's. Exam coordinates a two-phase commit with World through the Broker, so both change together or neither does. This folder passes Mathematical Analysis with a fresh player and checks that the attempt is submitted and the East Wing, the section that course opens, is unlocked. It leaves the North Wing locked, which the World collection's *Locked rooms* folder relies on. Needs the whole stack. To see a no vote, stop World (`docker compose stop world-api`) and run *Submit*: it answers 503 and the attempt stays in_progress; start World and submit again.",
+      "item": [
+        {
+          "name": "Start an attempt in Mathematical Analysis",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A fresh player and encounter per run, so the folder stays re-runnable.",
+                  "const run = Date.now();",
+                  "pm.collectionVariables.set(\"tpcPlayerId\", \"player-2pc-\" + run);",
+                  "pm.collectionVariables.set(\"tpcEncounterId\", \"enc-2pc-\" + run);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code < 300) {",
+                  "    pm.collectionVariables.set(\"tpcAttemptId\", pm.response.json().attempt_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/exams/attempts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "exams",
+                "attempts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"player_id\": \"{{tpcPlayerId}}\",\n  \"game_session_id\": \"session-1\",\n  \"encounter_id\": \"{{tpcEncounterId}}\",\n  \"course_id\": \"math_analysis\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Answer question 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 202\", function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/exams/attempts/{{tpcAttemptId}}/answers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "exams",
+                "attempts",
+                "{{tpcAttemptId}}",
+                "answers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question_id\": \"q_ma_001\",\n  \"option_id\": \"q_ma_001_a\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Answer question 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 202\", function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/exams/attempts/{{tpcAttemptId}}/answers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "exams",
+                "attempts",
+                "{{tpcAttemptId}}",
+                "answers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question_id\": \"q_ma_002\",\n  \"option_id\": \"q_ma_002_a\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Answer question 3",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 202\", function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/exams/attempts/{{tpcAttemptId}}/answers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "exams",
+                "attempts",
+                "{{tpcAttemptId}}",
+                "answers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question_id\": \"q_ma_003\",\n  \"option_id\": \"q_ma_003_a\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Submit – closes the attempt and commits the unlock",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"the attempt passed\", function () {",
+                  "    pm.expect(pm.response.json().passed).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/exams/attempts/{{tpcAttemptId}}/submit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "exams",
+                "attempts",
+                "{{tpcAttemptId}}",
+                "submit"
+              ]
+            },
+            "description": "Exam writes the attempt as committing, World prepares the unlock, Exam writes the decision and World commits. 503 means World could not prepare: nothing changed and the attempt is still open."
+          }
+        },
+        {
+          "name": "The attempt is submitted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"status is submitted\", function () {",
+                  "    pm.expect(pm.response.json().status).to.eql(\"submitted\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/exams/attempts/{{tpcAttemptId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "exams",
+                "attempts",
+                "{{tpcAttemptId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "The East Wing is unlocked in World",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"the section Mathematical Analysis opens is unlocked\", function () {",
+                  "    const east = pm.response.json().sections.find(function (s) { return s.unlock_course_id === \"math_analysis\"; });",
+                  "    pm.expect(east, \"a section for math_analysis\").to.exist;",
+                  "    pm.expect(east.unlocked).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/worlds/utm_campus/sections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "worlds",
+                "utm_campus",
+                "sections"
+              ]
+            }
+          }
+        },
+        {
+          "name": "World's transaction routes are not public",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/unlock-transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "unlock-transactions"
+              ]
+            },
+            "description": "The two-phase commit routes live under /internal, which the Gateway does not route.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transaction_id\": \"from-outside\",\n  \"course_id\": \"math_analysis\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   ],
   "variable": [
@@ -1511,6 +1876,21 @@
     },
     {
       "key": "firstInstance",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tpcPlayerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tpcEncounterId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tpcAttemptId",
       "value": "",
       "type": "string"
     }

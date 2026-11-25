@@ -1697,6 +1697,379 @@
           ]
         }
       ]
+    },
+    {
+      "name": "12. Lab 5 – two-phase commit (participant)",
+      "description": "Lab 5: World is the participant in the two-phase commit the Exam Service coordinates. Its routes are under /internal, which the Gateway does not route, so this folder calls them the way Exam does: through the Broker (`brokerUrl` = `http://localhost:8600`). It walks one transaction through prepare, abort and the refusals that follow, for a course that opens no section, so the map does not change. The commit path is in the Exam collection's *Lab 5* folder.",
+      "item": [
+        {
+          "name": "Prepare – World votes yes",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"txId\", \"postman-tx-\" + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"state is prepared\", function () {",
+                  "    pm.expect(pm.response.json().state).to.eql(\"prepared\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{brokerUrl}}/send/world/internal/unlock-transactions",
+              "host": [
+                "{{brokerUrl}}"
+              ],
+              "path": [
+                "send",
+                "world",
+                "internal",
+                "unlock-transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transaction_id\": \"{{txId}}\",\n  \"course_id\": \"postman_no_section\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Prepare again – same answer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"state is prepared\", function () {",
+                  "    pm.expect(pm.response.json().state).to.eql(\"prepared\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{brokerUrl}}/send/world/internal/unlock-transactions",
+              "host": [
+                "{{brokerUrl}}"
+              ],
+              "path": [
+                "send",
+                "world",
+                "internal",
+                "unlock-transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transaction_id\": \"{{txId}}\",\n  \"course_id\": \"postman_no_section\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Where the transaction stands",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"state is prepared\", function () {",
+                  "    pm.expect(pm.response.json().state).to.eql(\"prepared\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{brokerUrl}}/send/world/internal/unlock-transactions/{{txId}}",
+              "host": [
+                "{{brokerUrl}}"
+              ],
+              "path": [
+                "send",
+                "world",
+                "internal",
+                "unlock-transactions",
+                "{{txId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Abort",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"state is aborted\", function () {",
+                  "    pm.expect(pm.response.json().state).to.eql(\"aborted\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{brokerUrl}}/send/world/internal/unlock-transactions/{{txId}}/abort",
+              "host": [
+                "{{brokerUrl}}"
+              ],
+              "path": [
+                "send",
+                "world",
+                "internal",
+                "unlock-transactions",
+                "{{txId}}",
+                "abort"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Abort again – same answer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"state is aborted\", function () {",
+                  "    pm.expect(pm.response.json().state).to.eql(\"aborted\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{brokerUrl}}/send/world/internal/unlock-transactions/{{txId}}/abort",
+              "host": [
+                "{{brokerUrl}}"
+              ],
+              "path": [
+                "send",
+                "world",
+                "internal",
+                "unlock-transactions",
+                "{{txId}}",
+                "abort"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Commit after the abort is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 409\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{brokerUrl}}/send/world/internal/unlock-transactions/{{txId}}/commit",
+              "host": [
+                "{{brokerUrl}}"
+              ],
+              "path": [
+                "send",
+                "world",
+                "internal",
+                "unlock-transactions",
+                "{{txId}}",
+                "commit"
+              ]
+            }
+          }
+        },
+        {
+          "name": "A late prepare is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 409\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{brokerUrl}}/send/world/internal/unlock-transactions",
+              "host": [
+                "{{brokerUrl}}"
+              ],
+              "path": [
+                "send",
+                "world",
+                "internal",
+                "unlock-transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transaction_id\": \"{{txId}}\",\n  \"course_id\": \"postman_no_section\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Commit without a prepare",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{brokerUrl}}/send/world/internal/unlock-transactions/never-prepared-{{txId}}/commit",
+              "host": [
+                "{{brokerUrl}}"
+              ],
+              "path": [
+                "send",
+                "world",
+                "internal",
+                "unlock-transactions",
+                "never-prepared-{{txId}}",
+                "commit"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Not reachable through the Gateway",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/internal/unlock-transactions/{{txId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "unlock-transactions",
+                "{{txId}}"
+              ]
+            }
+          }
+        }
+      ]
     }
   ],
   "variable": [
@@ -1767,6 +2140,16 @@
     },
     {
       "key": "firstInstance",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "brokerUrl",
+      "value": "http://localhost:8600",
+      "type": "string"
+    },
+    {
+      "key": "txId",
       "value": "",
       "type": "string"
     }
