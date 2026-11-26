@@ -139,6 +139,21 @@ x-resource-cluster-env: &resource-cluster-env
     POSTGRESQL_SYNCHRONOUS_REPLICAS_MODE: ANY
     POSTGRESQL_SYNCHRONOUS_COMMIT_MODE: "on"
 
+
+
+x-rqlite: &rqlite
+  image: rqlite/rqlite:10.3.6
+  restart: unless-stopped
+  depends_on:
+    broker:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
+    interval: 3s
+    timeout: 2s
+    retries: 20
+    start_period: 10s
+
 services:
     # ---------------------------------------------------------------------
     # Gateway
@@ -577,92 +592,105 @@ services:
     # Game Service
     # ---------------------------------------------------------------------
     game-db:
+        <<: *rqlite
         logging: *system-logging
-        depends_on:
-            broker:
-                condition: service_healthy
-        image: rqlite/rqlite:10.3.6
-        container_name: cpr-game-db
-        restart: unless-stopped
         command:
-            - -node-id=game
+            - -fk
+            - -node-id=game-db
             - -http-addr=0.0.0.0:4001
             - -http-adv-addr=game-db:4001
             - -raft-addr=0.0.0.0:4002
             - -raft-adv-addr=game-db:4002
+            - -bootstrap-expect=3
+            - -join=game-db:4002,game-db2:4002,game-db3:4002
         volumes:
             - game-data:/rqlite/file
         ports:
             - "127.0.0.1:4004:4001" # HTTP API — only needed on the host for local debugging
-        healthcheck:
-            test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
-            interval: 3s
-            timeout: 2s
-            retries: 10
-            start_period: 5s
 
-    game-service-1:
+    game-db2:
+        <<: *rqlite
         logging: *system-logging
-        image: adrianburduja/game-service:4.0.1
-        restart: unless-stopped
-        depends_on:
-            broker:
-                condition: service_healthy
-            game-db:
-                condition: service_healthy
-        environment:
-            - DB_DSN=http://game-db:4001
-            - WS_TICKET_SECRET=${WS_TICKET_SECRET}
-            - WS_PUBLIC_ADDRESS=http://localhost:8086
-            - INSTANCE_ID=game-service-1
-            - DISCOVERY_URL=http://discovery:8080
+        command:
+            - -fk
+            - -node-id=game-db2
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=game-db2:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=game-db2:4002
+            - -bootstrap-expect=3
+            - -join=game-db:4002,game-db2:4002,game-db3:4002
+        volumes:
+            - game-data2:/rqlite/file
         ports:
-            - "8086:8080"
-    game-service-2:
+            - "127.0.0.1:4104:4001" # HTTP API — only needed on the host for local debugging
+
+    game-db3:
+        <<: *rqlite
         logging: *system-logging
-        image: adrianburduja/game-service:3.2.5
-        restart: unless-stopped
-        depends_on:
-            broker:
-                condition: service_healthy
-            game-db:
-                condition: service_healthy
-        environment:
-            - DB_DSN=http://game-db:4001
-            - WS_TICKET_SECRET=${WS_TICKET_SECRET}
-            - WS_PUBLIC_ADDRESS=http://localhost:8087
-            - INSTANCE_ID=game-service-2
-            - DISCOVERY_URL=http://discovery:8080
+        command:
+            - -fk
+            - -node-id=game-db3
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=game-db3:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=game-db3:4002
+            - -bootstrap-expect=3
+            - -join=game-db:4002,game-db2:4002,game-db3:4002
+        volumes:
+            - game-data3:/rqlite/file
         ports:
-            - "8087:8080"
+            - "127.0.0.1:4204:4001" # HTTP API — only needed on the host for local debugging
 
     # ---------------------------------------------------------------------
     # Player Service
     # ---------------------------------------------------------------------
     player-db:
+        <<: *rqlite
         logging: *system-logging
-        depends_on:
-            broker:
-                condition: service_healthy
-        image: rqlite/rqlite:10.3.6
-        container_name: cpr-player-db
-        restart: unless-stopped
         command:
-            - -node-id=player
+            - -fk
+            - -node-id=player-db
             - -http-addr=0.0.0.0:4001
             - -http-adv-addr=player-db:4001
             - -raft-addr=0.0.0.0:4002
             - -raft-adv-addr=player-db:4002
+            - -bootstrap-expect=3
+            - -join=player-db:4002,player-db2:4002,player-db3:4002
         volumes:
             - player-data:/rqlite/file
         ports:
             - "127.0.0.1:4002:4001" # HTTP API — only needed on the host for local debugging
-        healthcheck:
-            test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4001/readyz"]
-            interval: 3s
-            timeout: 2s
-            retries: 10
-            start_period: 5s
+
+    player-db2:
+        <<: *rqlite
+        logging: *system-logging
+        command:
+            - -fk
+            - -node-id=player-db2
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=player-db2:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=player-db2:4002
+            - -bootstrap-expect=3
+            - -join=player-db:4002,player-db2:4002,player-db3:4002
+        volumes:
+            - player-data2:/rqlite/file
+
+    player-db3:
+        <<: *rqlite
+        logging: *system-logging
+        command:
+            - -fk
+            - -node-id=player-db3
+            - -http-addr=0.0.0.0:4001
+            - -http-adv-addr=player-db3:4001
+            - -raft-addr=0.0.0.0:4002
+            - -raft-adv-addr=player-db3:4002
+            - -bootstrap-expect=3
+            - -join=player-db:4002,player-db2:4002,player-db3:4002
+        volumes:
+            - player-data3:/rqlite/file
 
     player-service:
         logging: *system-logging
@@ -686,13 +714,9 @@ services:
     # replicated over Raft, and when the leader stops the other two elect a new
     # one. exam-db starts the cluster; the other two join it.
     exam-db:
+        <<: *rqlite
         logging: *system-logging
-        depends_on:
-            broker:
-                condition: service_healthy
-        image: rqlite/rqlite:10.3.6
         container_name: cpr-exam-rqlite
-        restart: unless-stopped
         command:
             - -node-id=exam
             - -http-addr=0.0.0.0:4001
@@ -703,18 +727,10 @@ services:
             - "127.0.0.1:4001:4001"
         volumes:
             - exam_rqlite_data:/rqlite/file
-        healthcheck:
-            test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
-            interval: 10s
-            timeout: 5s
-            retries: 5
 
     exam-db-2:
+        <<: *rqlite
         logging: *system-logging
-        image: rqlite/rqlite:10.3.6
-        restart: unless-stopped
-        # Replica 2 of exam-db: joins the cluster through exam-db, keeps a full
-        # copy of the data and can become the leader. No host port.
         command:
             - -node-id=exam-2
             - -http-addr=0.0.0.0:4001
@@ -724,18 +740,10 @@ services:
             - -join=exam-db:4002
         volumes:
             - exam_rqlite_data_2:/rqlite/file
-        healthcheck:
-            test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
-            interval: 10s
-            timeout: 5s
-            retries: 5
 
     exam-db-3:
+        <<: *rqlite
         logging: *system-logging
-        image: rqlite/rqlite:10.3.6
-        restart: unless-stopped
-        # Replica 3 of exam-db: joins the cluster through exam-db, keeps a full
-        # copy of the data and can become the leader. No host port.
         command:
             - -node-id=exam-3
             - -http-addr=0.0.0.0:4001
@@ -745,11 +753,6 @@ services:
             - -join=exam-db:4002
         volumes:
             - exam_rqlite_data_3:/rqlite/file
-        healthcheck:
-            test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
-            interval: 10s
-            timeout: 5s
-            retries: 5
 
     exam-api:
         logging: *system-logging
@@ -788,13 +791,9 @@ services:
     # replicated over Raft, and when the leader stops the other two elect a new
     # one. world-db starts the cluster; the other two join it.
     world-db:
+        <<: *rqlite
         logging: *system-logging
-        depends_on:
-            broker:
-                condition: service_healthy
-        image: rqlite/rqlite:10.3.6
         container_name: cpr-world-rqlite
-        restart: unless-stopped
         command:
             - -node-id=world
             - -http-addr=0.0.0.0:4001
@@ -805,18 +804,10 @@ services:
             - "127.0.0.1:4003:4001"
         volumes:
             - world_rqlite_data:/rqlite/file
-        healthcheck:
-            test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
-            interval: 10s
-            timeout: 5s
-            retries: 5
 
     world-db-2:
+        <<: *rqlite
         logging: *system-logging
-        image: rqlite/rqlite:10.3.6
-        restart: unless-stopped
-        # Replica 2 of world-db: joins the cluster through world-db, keeps a full
-        # copy of the data and can become the leader. No host port.
         command:
             - -node-id=world-2
             - -http-addr=0.0.0.0:4001
@@ -826,18 +817,10 @@ services:
             - -join=world-db:4002
         volumes:
             - world_rqlite_data_2:/rqlite/file
-        healthcheck:
-            test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
-            interval: 10s
-            timeout: 5s
-            retries: 5
 
     world-db-3:
+        <<: *rqlite
         logging: *system-logging
-        image: rqlite/rqlite:10.3.6
-        restart: unless-stopped
-        # Replica 3 of world-db: joins the cluster through world-db, keeps a full
-        # copy of the data and can become the leader. No host port.
         command:
             - -node-id=world-3
             - -http-addr=0.0.0.0:4001
@@ -847,11 +830,6 @@ services:
             - -join=world-db:4002
         volumes:
             - world_rqlite_data_3:/rqlite/file
-        healthcheck:
-            test: ["CMD", "wget", "-qO-", "http://localhost:4001/readyz"]
-            interval: 10s
-            timeout: 5s
-            retries: 5
 
     world-api:
         logging: *system-logging
@@ -967,7 +945,11 @@ volumes:
     zombie_pgdata:
     resource_pgdata:
     game-data:
+    game-data2:
+    game-data3:
     player-data:
+    player-data2:
+    player-data3:
     exam_rqlite_data:
     exam_rqlite_data_2:
     exam_rqlite_data_3:
