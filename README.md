@@ -35,7 +35,7 @@ does not hold up requests to the others.
 | Component  | Image                                                     | Local URL                               |
 | ---------- | --------------------------------------------------------- | --------------------------------------- |
 | Gateway    | `gheorghe2973/gateway-service:4.1.0-dev`                  | `http://localhost:8000`                 |
-| Broker     | `${BROKER_IMAGE:-adrianburduja/messege-broker:4.1.1-dev}` | `http://localhost:8600` (loopback only) |
+| Broker     | `${BROKER_IMAGE:-adrianburduja/messege-broker:5.0.0}`     | `http://localhost:8600` (loopback only) |
 | Discovery  | `ion04/discovery-service:4.0.0`                           | `http://localhost:8500`                 |
 | Grafana    | `grafana/grafana:12.1.0`                                  | `http://localhost:3000`                 |
 | Prometheus | `prom/prometheus:v3.5.0`                                  | `http://localhost:9090` (loopback only) |
