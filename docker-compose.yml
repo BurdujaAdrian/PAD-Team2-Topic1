@@ -37,6 +37,11 @@ x-base-db: &base-db
         interval: 5s
         timeout: 5s
         retries: 20
+    # A reinforce is a two-phase commit that Base prepares with PREPARE TRANSACTION; see the
+    # same setting on the crafting-db nodes below.
+    configs:
+        - source: prepared-transactions
+          target: /opt/bitnami/postgresql/conf/conf.d/prepared-transactions.conf
 
 x-base-db-env: &base-db-env
     POSTGRESQL_DATABASE: ${BASE_POSTGRES_DB}
@@ -62,6 +67,13 @@ x-crafting-db: &crafting-db
         interval: 5s
         timeout: 5s
         retries: 20
+    # A craft is a two-phase commit that Crafting prepares with PREPARE TRANSACTION, which
+    # Postgres refuses while max_prepared_transactions is 0. The image's postgresql.conf reads
+    # conf.d (it ignores POSTGRESQL_EXTRA_FLAGS under repmgr). Every node gets it: a standby
+    # needs at least the primary's value to replay its WAL.
+    configs:
+        - source: prepared-transactions
+          target: /opt/bitnami/postgresql/conf/conf.d/prepared-transactions.conf
 
 x-crafting-db-env: &crafting-db-env
     POSTGRESQL_DATABASE: ${CRAFTING_POSTGRES_DB}
@@ -176,7 +188,7 @@ services:
     # Message Broker: routing, breakers, durable event queues and system logs.
     broker:
         logging: *system-logging
-        image: ${BROKER_IMAGE:-adrianburduja/messege-broker:4.1.1-dev}
+        image: ${BROKER_IMAGE:-adrianburduja/messege-broker:5.0.0}
         container_name: cpr-broker
         restart: unless-stopped
         environment:
@@ -318,7 +330,7 @@ services:
 
     base-api:
         logging: *system-logging
-        image: ion04/base-service:5.1.0
+        image: ion04/base-service:5.3.0
         restart: unless-stopped
         # Two instances sharing the base-db cluster. No container_name and no host port:
         # replicas cannot share either, so Base is reached through the Gateway.
@@ -386,7 +398,7 @@ services:
 
     crafting-api:
         logging: *system-logging
-        image: ion04/crafting-service:5.2.0
+        image: ion04/crafting-service:5.3.0
         restart: unless-stopped
         # Two instances sharing the crafting-db cluster. No container_name and no host port:
         # replicas cannot share either, so Crafting is reached through the Gateway.
@@ -641,6 +653,41 @@ services:
             - game-data3:/rqlite/file
         ports:
             - "127.0.0.1:4204:4001" # HTTP API — only needed on the host for local debugging
+
+    game-service-1:
+        logging: *system-logging
+        image: adrianburduja/game-service:4.0.1
+        restart: unless-stopped
+        depends_on:
+            broker:
+                condition: service_healthy
+            game-db:
+                condition: service_healthy
+        environment:
+            - DB_DSN=http://game-db:4001
+            - WS_TICKET_SECRET=${WS_TICKET_SECRET}
+            - WS_PUBLIC_ADDRESS=http://localhost:8086
+            - INSTANCE_ID=game-service-1
+            - DISCOVERY_URL=http://discovery:8080
+        ports:
+            - "8086:8080"
+    game-service-2:
+        logging: *system-logging
+        image: adrianburduja/game-service:3.2.5
+        restart: unless-stopped
+        depends_on:
+            broker:
+                condition: service_healthy
+            game-db:
+                condition: service_healthy
+        environment:
+            - DB_DSN=http://game-db:4001
+            - WS_TICKET_SECRET=${WS_TICKET_SECRET}
+            - WS_PUBLIC_ADDRESS=http://localhost:8087
+            - INSTANCE_ID=game-service-2
+            - DISCOVERY_URL=http://discovery:8080
+        ports:
+            - "8087:8080"
 
     # ---------------------------------------------------------------------
     # Player Service
@@ -965,3 +1012,9 @@ volumes:
     resource_db_1:
     resource_db_2:
     resource_db_3:
+
+# Written inline, so the setting needs no file of its own next to this one.
+configs:
+    prepared-transactions:
+        content: |
+            max_prepared_transactions = 10
