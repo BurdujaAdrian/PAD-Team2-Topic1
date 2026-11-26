@@ -753,6 +753,7 @@ services:
         environment:
             - DISCOVERY_URL=http://discovery:8080
             - DB_DSN=http://player-db:4001
+            - REDIS_ADDR=cache-1:6379,cache-2:6379,cache-3:6379
 
     # ---------------------------------------------------------------------
     # Exam Service
